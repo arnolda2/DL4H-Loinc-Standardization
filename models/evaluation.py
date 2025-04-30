@@ -25,377 +25,299 @@ def load_test_data(test_file):
         test_df: DataFrame with test data
     """
     test_df = pd.read_csv(test_file)
-    print(f"Loaded test data: {len(test_df)} entries")
+    print(f"Loaded {len(test_df)} test samples from {test_file}")
+    
+    # Check if this is an augmented test file (has 'is_augmented' column)
+    if 'is_augmented' in test_df.columns:
+        print(f"Found augmented test data: {len(test_df[test_df['is_augmented']])} augmented samples, {len(test_df[~test_df['is_augmented']])} original samples")
+    
+    required_columns = ['SOURCE', 'LOINC_NUM']
+    missing_columns = [col for col in required_columns if col not in test_df.columns]
+    if missing_columns:
+        raise ValueError(f"Test data is missing required columns: {missing_columns}")
+    
     return test_df
 
-def load_target_pool(target_file, expanded=False):
+def load_target_loincs(loinc_file):
     """
-    Load the pool of target LOINC codes
+    Load LOINC target data
     
     Args:
-        target_file: Path to the file with target LOINC codes
-        expanded: Whether to use the expanded target pool
+        loinc_file: Path to the LOINC data CSV file
         
     Returns:
-        target_df: DataFrame with target LOINC codes
+        target_df: DataFrame with LOINC targets
     """
-    target_df = pd.read_csv(target_file)
+    target_df = pd.read_csv(loinc_file)
+    print(f"Loaded {len(target_df)} LOINC targets from {loinc_file}")
     
-    if expanded:
-        # If expanded target pool file exists, load it
-        expanded_file = os.path.join(os.path.dirname(target_file), "expanded_target_pool.txt")
-        if os.path.exists(expanded_file):
-            expanded_targets = pd.read_csv(expanded_file, header=None, names=["LOINC_NUM"])
-            print(f"Loaded expanded target pool: {len(expanded_targets)} LOINC codes")
-            return expanded_targets
-        else:
-            print("Warning: Expanded target pool file not found. Using regular target pool.")
+    required_columns = ['LOINC_NUM']
+    missing_columns = [col for col in required_columns if col not in target_df.columns]
+    if missing_columns:
+        raise ValueError(f"LOINC data is missing required columns: {missing_columns}")
     
-    # Extract unique LOINC codes
-    unique_targets = target_df["LOINC_NUM"].drop_duplicates().reset_index(drop=True)
-    print(f"Loaded target pool: {len(unique_targets)} unique LOINC codes")
+    # Handle the target text column which might be named differently
+    text_column_candidates = ['TARGET', 'LONG_COMMON_NAME', 'DisplayName', 'SHORTNAME']
+    available_text_columns = [col for col in text_column_candidates if col in target_df.columns]
     
-    return pd.DataFrame({"LOINC_NUM": unique_targets})
+    if not available_text_columns:
+        raise ValueError(f"LOINC data does not have any suitable text column. Need one of: {text_column_candidates}")
+    
+    # Use the first available text column as the TARGET
+    text_column = available_text_columns[0]
+    print(f"Using '{text_column}' as the target text column")
+    
+    # Create a new dataframe with LOINC_NUM and TARGET columns
+    processed_df = pd.DataFrame({
+        'LOINC_NUM': target_df['LOINC_NUM'],
+        'TARGET': target_df[text_column]
+    })
+    
+    return processed_df
 
-def compute_embeddings(model, texts, batch_size=32):
+def load_model(checkpoint_dir, fold):
     """
-    Compute embeddings for a list of texts
+    Load trained model for the specified fold
     
     Args:
-        model: Trained LOINCEncoder model
-        texts: List of text strings
-        batch_size: Batch size for processing
+        checkpoint_dir: Directory with model checkpoints
+        fold: Fold index
         
     Returns:
-        embeddings: NumPy array of embeddings
+        model: Loaded model
     """
-    embeddings_list = []
+    model_path = os.path.join(checkpoint_dir, f"stage2_fold{fold+1}_model.weights.h5")
+    if not os.path.exists(model_path):
+        raise ValueError(f"Model checkpoint not found at {model_path}")
     
-    # Process texts in batches to avoid memory issues
-    for i in range(0, len(texts), batch_size):
-        batch_texts = texts[i:i+batch_size]
-        with tf.device('/CPU:0'):  # Force text processing on CPU
-            batch_embeddings = model(inputs=batch_texts, training=False).numpy()
-        embeddings_list.append(batch_embeddings)
-    
-    # Concatenate batch embeddings
-    if embeddings_list:
-        embeddings = np.vstack(embeddings_list)
-    else:
-        # Return empty array if no texts
-        embeddings = np.array([])
-    
-    return embeddings
+    try:
+        # Import the model class
+        from models.t5_encoder import LOINCEncoder
+        
+        # Initialize the model
+        model = LOINCEncoder(embedding_dim=128, dropout_rate=0.0)
+        
+        # Create a dummy input to build the model
+        _ = model(inputs=["dummy text"])
+        
+        # Load the weights
+        model.load_weights(model_path)
+        print(f"Loaded model from {model_path}")
+        return model
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        raise
 
-def augment_test_data(test_df, num_augmentations=10):
+def compute_embeddings(texts, model, batch_size=16):
     """
-    Create augmented versions of the test data
+    Compute embeddings for texts
     
     Args:
-        test_df: DataFrame with test data
-        num_augmentations: Number of augmentations per test sample
+        texts: List of texts to embed
+        model: Trained model
+        batch_size: Batch size for inference
         
     Returns:
-        augmented_df: DataFrame with augmented test data
+        embeddings: Numpy array of embeddings
     """
     try:
-        from preprocessing.data_augmentation import augment_text
-    except ImportError:
-        print("Warning: Could not import augment_text function. Using simple character substitution instead.")
-        # Define a simple augmentation function
-        def augment_text(text):
-            import random
-            import string
-            # Simple character substitution
-            chars = list(text)
-            # Replace ~10% of characters
-            for i in range(max(1, len(chars) // 10)):
-                pos = random.randint(0, len(chars) - 1)
-                # Skip spaces
-                if chars[pos] == ' ':
-                    continue
-                # Replace with similar character or skip
-                if random.random() < 0.5:
-                    # Skip character (deletion)
-                    chars[pos] = ''
-                else:
-                    # Character substitution with similar looking or adjacent keyboard character
-                    similar_chars = {
-                        'a': 'aes', 'b': 'bdp', 'c': 'ceo', 'd': 'dsf', 'e': 'ear', 
-                        'f': 'frt', 'g': 'gfh', 'h': 'hgj', 'i': 'iuo', 'j': 'jkh',
-                        'k': 'klj', 'l': 'lko', 'm': 'mn', 'n': 'nbm', 'o': 'oip',
-                        'p': 'po', 'q': 'qw', 'r': 'rte', 's': 'sad', 't': 'try',
-                        'u': 'uyi', 'v': 'vc', 'w': 'wqe', 'x': 'xzc', 'y': 'yut',
-                        'z': 'zax'
-                    }
-                    if chars[pos].lower() in similar_chars:
-                        similar = similar_chars[chars[pos].lower()]
-                        chars[pos] = random.choice(similar)
-            
-            # Randomly insert space in ~10% of cases
-            if len(chars) > 5 and random.random() < 0.1:
-                pos = random.randint(1, len(chars) - 1)
-                chars.insert(pos, ' ')
-            
-            return ''.join(chars)
-    
-    augmented_data = []
-    
-    for _, row in tqdm(test_df.iterrows(), total=len(test_df), desc="Augmenting test data"):
-        source_text = row["SOURCE"]
-        target_loinc = row["LOINC_NUM"]
+        all_embeddings = []
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i + batch_size]
+            # Ensure all texts are strings
+            batch_texts = [str(text) if not isinstance(text, str) else text for text in batch_texts]
+            # Calculate embeddings for batch
+            batch_embeddings = model(inputs=batch_texts, training=False).numpy()
+            all_embeddings.append(batch_embeddings)
         
-        # Add the original row
-        augmented_data.append({
-            "SOURCE": source_text,
-            "LOINC_NUM": target_loinc,
-            "is_augmented": False
-        })
-        
-        # Create augmented versions - make sure they're all simple strings
-        for _ in range(num_augmentations):
-            try:
-                # Ensure we have a plain string
-                if isinstance(source_text, str):
-                    augmented_text = augment_text(source_text)
-                    # Verify the output is a string
-                    if isinstance(augmented_text, str):
-                        augmented_data.append({
-                            "SOURCE": augmented_text,
-                            "LOINC_NUM": target_loinc,
-                            "is_augmented": True
-                        })
-                    else:
-                        print(f"Warning: Augmentation returned a non-string: {type(augmented_text)}. Skipping.")
-                else:
-                    print(f"Warning: Source text is not a string: {type(source_text)}. Skipping.")
-            except Exception as e:
-                print(f"Error during augmentation: {e}. Skipping.")
-    
-    augmented_df = pd.DataFrame(augmented_data)
-    print(f"Created augmented test data: {len(augmented_df)} entries")
-    
-    return augmented_df
+        # Concatenate all batches
+        embeddings = np.concatenate(all_embeddings, axis=0)
+        return embeddings
+    except Exception as e:
+        print(f"Error computing embeddings: {e}")
+        raise
 
-def calculate_top_k_accuracy(source_embeddings, target_embeddings_dict, source_loincs, k_values=[1, 3, 5]):
+def evaluate_top_k_accuracy(test_df, target_df, model, k_values=[1, 3, 5], batch_size=16, 
+                           augmented_test=False, use_only_original=False):
     """
-    Calculate top-k accuracy for source embeddings against target embeddings
+    Evaluate Top-k accuracy
     
     Args:
-        source_embeddings: NumPy array of source embeddings
-        target_embeddings_dict: Dictionary mapping LOINC codes to embeddings
-        source_loincs: List of ground truth LOINC codes for sources
-        k_values: List of k values for top-k accuracy
+        test_df: DataFrame with test data
+        target_df: DataFrame with LOINC targets
+        model: Trained model
+        k_values: List of k values for Top-k accuracy
+        batch_size: Batch size for inference
+        augmented_test: Whether this is augmented test data
+        use_only_original: If True, only use original samples from augmented test data
         
     Returns:
-        metrics: Dictionary with top-k accuracy values
+        results: Dictionary with Top-k accuracy results
     """
-    # Convert target embeddings dict to arrays
-    target_loincs = list(target_embeddings_dict.keys())
-    target_embeddings = np.array([target_embeddings_dict[loinc] for loinc in target_loincs])
+    # Preprocess data if needed
+    if augmented_test and use_only_original and 'is_augmented' in test_df.columns:
+        print("Using only original samples from augmented test data")
+        test_df = test_df[~test_df['is_augmented']]
     
-    # Calculate cosine similarity between source and target embeddings
-    # For cosine similarity, we want to maximize: cosine_sim = dot(a, b) / (||a|| * ||b||)
-    # Since embeddings are L2-normalized, this simplifies to: cosine_sim = dot(a, b)
-    similarity_matrix = np.matmul(source_embeddings, target_embeddings.T)
+    # Get unique target LOINCs
+    unique_target_loincs = target_df['LOINC_NUM'].unique()
+    unique_target_texts = target_df['TARGET'].unique()
+    print(f"Evaluating against {len(unique_target_loincs)} unique LOINC targets")
     
-    # Sort similarities in descending order (highest similarity first)
-    # Get indices of targets sorted by similarity
-    sorted_indices = np.argsort(-similarity_matrix, axis=1)
+    # Check if test LOINCs exist in target LOINCs
+    test_loincs = test_df['LOINC_NUM'].unique()
+    matching_loincs = set(test_loincs) & set(unique_target_loincs)
+    print(f"Test data has {len(test_loincs)} unique LOINCs, {len(matching_loincs)} match with target LOINCs")
     
-    # Initialize accuracy metrics
-    metrics = {}
+    if len(matching_loincs) == 0:
+        print("WARNING: No matching LOINCs between test and target data!")
+        print(f"Test LOINCs: {test_loincs}")
+        print(f"First few target LOINCs: {list(unique_target_loincs)[:10]}")
+    
+    # Get source texts and target LOINCs
+    source_texts = test_df['SOURCE'].tolist()
+    target_loincs = test_df['LOINC_NUM'].tolist()
+    
+    # Compute embeddings for target LOINCs
+    print("Computing embeddings for target LOINCs...")
+    target_texts = []
+    for loinc in tqdm(unique_target_loincs):
+        # Use first matching text if multiple exist for the same LOINC code
+        matching_rows = target_df[target_df['LOINC_NUM'] == loinc]
+        target_text = matching_rows.iloc[0]['TARGET']
+        target_texts.append(target_text)
+    
+    target_embeddings = compute_embeddings(target_texts, model, batch_size)
+    
+    # Compute embeddings for source texts
+    print("Computing embeddings for source texts...")
+    source_embeddings = compute_embeddings(source_texts, model, batch_size)
+    
+    # Create dictionary mapping LOINC codes to their indices in the target embeddings
+    loinc_to_index = {loinc: i for i, loinc in enumerate(unique_target_loincs)}
+    
+    # Calculate pairwise distances
+    print("Calculating similarities...")
+    # Using negative cosine distance (higher is better)
+    similarities = -pairwise_distances(source_embeddings, target_embeddings, metric='cosine')
+    
+    # Calculate Top-k accuracy
+    results = {}
     for k in k_values:
-        correct_count = 0
+        # Get top k indices for each source
+        top_k_indices = np.argsort(similarities, axis=1)[:, -k:]
         
-        # Check if the ground truth is in the top-k predictions
-        for i, source_loinc in enumerate(source_loincs):
-            # Get top-k target LOINC codes for this source
-            top_k_indices = sorted_indices[i, :k]
-            top_k_loincs = [target_loincs[idx] for idx in top_k_indices]
-            
-            # Check if the ground truth LOINC is in the top-k
-            if source_loinc in top_k_loincs:
-                correct_count += 1
+        # Check if correct target is in top k
+        correct = 0
+        for i, target_loinc in enumerate(target_loincs):
+            # Get the target LOINC's index
+            if target_loinc in loinc_to_index:
+                target_idx = loinc_to_index[target_loinc]
+                # Check if target index is in top k
+                if target_idx in top_k_indices[i]:
+                    correct += 1
+            else:
+                print(f"WARNING: Target LOINC {target_loinc} not in target pool")
         
         # Calculate accuracy
-        accuracy = correct_count / len(source_loincs) if len(source_loincs) > 0 else 0
-        metrics[f'top_{k}_accuracy'] = accuracy
+        accuracy = correct / len(source_texts)
+        results[f'top{k}_accuracy'] = accuracy
+        print(f"Top-{k} accuracy: {accuracy:.4f} ({correct}/{len(source_texts)})")
     
-    return metrics
-
-def evaluate_model(model, test_df, target_loinc_text_dict, use_augmentation=False, expanded_targets=False):
-    """
-    Evaluate the model on test data
+    # Calculate Mean Reciprocal Rank (MRR)
+    reciprocal_ranks = []
+    for i, target_loinc in enumerate(target_loincs):
+        if target_loinc in loinc_to_index:
+            target_idx = loinc_to_index[target_loinc]
+            # Get rank of correct target (add 1 because indices are 0-based)
+            rank = np.where(np.argsort(similarities[i])[::-1] == target_idx)[0][0] + 1
+            reciprocal_ranks.append(1.0 / rank)
+        else:
+            reciprocal_ranks.append(0.0)
     
-    Args:
-        model: Trained LOINCEncoder model
-        test_df: DataFrame with test data
-        target_loinc_text_dict: Dictionary mapping LOINC codes to their text representations
-        use_augmentation: Whether to use augmented test data
-        expanded_targets: Whether to use the expanded target pool
-        
-    Returns:
-        metrics: Dictionary with evaluation metrics
-    """
-    # Prepare test data
-    if use_augmentation:
-        # Create augmented versions of test data
-        eval_df = augment_test_data(test_df)
-    else:
-        # Use original test data
-        eval_df = test_df.copy()
-        eval_df["is_augmented"] = False
+    mrr = np.mean(reciprocal_ranks)
+    results['mrr'] = mrr
+    print(f"Mean Reciprocal Rank: {mrr:.4f}")
     
-    # Extract source texts and ground truth LOINC codes
-    source_texts = eval_df["SOURCE"].tolist()
-    source_loincs = eval_df["LOINC_NUM"].tolist()
+    # Add target pool size to results
+    results['target_pool_size'] = len(unique_target_loincs)
+    results['matching_loincs'] = len(matching_loincs)
+    results['test_samples'] = len(source_texts)
     
-    print("Computing source embeddings...")
-    # Compute embeddings for source texts
-    source_embeddings = compute_embeddings(model, source_texts)
-    
-    print("Computing target embeddings...")
-    # Compute embeddings for all target LOINC codes
-    target_embeddings_dict = {}
-    for loinc, text in tqdm(target_loinc_text_dict.items(), desc="Embedding targets"):
-        embedding = compute_embeddings(model, [text])[0]  # Single embedding
-        target_embeddings_dict[loinc] = embedding
-    
-    print("Calculating metrics...")
-    # Calculate top-k accuracy
-    metrics = calculate_top_k_accuracy(
-        source_embeddings,
-        target_embeddings_dict,
-        source_loincs,
-        k_values=[1, 3, 5]  # As used in the paper
-    )
-    
-    # Display results
-    for k, acc in metrics.items():
-        print(f"{k}: {acc:.4f}")
-    
-    # Add info about augmentation and target pool size
-    metrics["augmented"] = use_augmentation
-    metrics["target_pool_size"] = len(target_embeddings_dict)
-    
-    return metrics
+    return results
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluate LOINC standardization model')
-    parser.add_argument('--test_file', type=str, required=True, help='Path to test data CSV')
-    parser.add_argument('--loinc_file', type=str, required=True, help='Path to LOINC data CSV')
-    parser.add_argument('--checkpoint_dir', type=str, default='models/checkpoints', help='Directory with model checkpoints')
-    parser.add_argument('--fold_idx', type=int, default=None, help='Specific fold to evaluate (default: evaluate all folds)')
-    parser.add_argument('--embedding_dim', type=int, default=128, help='Embedding dimension')
-    parser.add_argument('--output_dir', type=str, default='results', help='Directory to save results')
-    parser.add_argument('--augmented', action='store_true', help='Use augmented test data')
-    parser.add_argument('--expanded_targets', action='store_true', help='Use expanded target pool')
-    
+    parser.add_argument('--test_file', type=str, required=True, 
+                        help='Path to test data CSV')
+    parser.add_argument('--loinc_file', type=str, required=True, 
+                        help='Path to LOINC data CSV')
+    parser.add_argument('--checkpoint_dir', type=str, required=True, 
+                        help='Directory with model checkpoints')
+    parser.add_argument('--fold', type=int, default=0, 
+                        help='Fold index')
+    parser.add_argument('--output_dir', type=str, default='results', 
+                        help='Directory to save results')
+    parser.add_argument('--k_values', type=int, nargs='+', default=[1, 3, 5], 
+                        help='k values for Top-k accuracy')
+    parser.add_argument('--batch_size', type=int, default=16, 
+                        help='Batch size for inference')
+    parser.add_argument('--expanded_pool', action='store_true', 
+                        help='Use expanded target pool')
+    parser.add_argument('--augmented_test', action='store_true', 
+                        help='Test on augmented data')
+    parser.add_argument('--original_only', action='store_true', 
+                        help='Use only original samples from augmented test data')
     args = parser.parse_args()
     
-    # Create output directory if it doesn't exist
+    # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Load test data
+    # Start time
+    start_time = time.time()
+    
+    # Load data
+    print(f"Loading test data from {args.test_file}...")
     test_df = load_test_data(args.test_file)
     
-    # Load LOINC data for target text representations
-    loinc_df = pd.read_csv(args.loinc_file)
+    print(f"Loading LOINC targets from {args.loinc_file}...")
+    target_df = load_target_loincs(args.loinc_file)
     
-    # Create dictionary mapping LOINC codes to their text representations
-    target_loinc_text_dict = {}
-    for _, row in loinc_df.iterrows():
-        loinc_code = row["LOINC_NUM"]
-        # Use LONG_COMMON_NAME as the text representation, if available
-        if "LONG_COMMON_NAME" in row and pd.notna(row["LONG_COMMON_NAME"]):
-            target_loinc_text_dict[loinc_code] = row["LONG_COMMON_NAME"]
-        # Fallback to DISPLAY_NAME if LONG_COMMON_NAME is not available
-        elif "DISPLAY_NAME" in row and pd.notna(row["DISPLAY_NAME"]):
-            target_loinc_text_dict[loinc_code] = row["DISPLAY_NAME"]
-        # Fallback to SHORTNAME if neither is available
-        elif "SHORTNAME" in row and pd.notna(row["SHORTNAME"]):
-            target_loinc_text_dict[loinc_code] = row["SHORTNAME"]
+    # Load model
+    print(f"Loading model for fold {args.fold}...")
+    model = load_model(args.checkpoint_dir, args.fold)
     
-    # Initialize results storage
-    results = []
+    # Evaluate
+    print("Evaluating model...")
+    results = evaluate_top_k_accuracy(
+        test_df=test_df,
+        target_df=target_df,
+        model=model,
+        k_values=args.k_values,
+        batch_size=args.batch_size,
+        augmented_test=args.augmented_test,
+        use_only_original=args.original_only
+    )
     
-    if args.fold_idx is not None:
-        # Evaluate specific fold
-        fold_indices = [args.fold_idx]
-    else:
-        # Evaluate all folds
-        fold_indices = range(5)  # Default to 5 folds
+    # Add fold information to results
+    results['fold'] = args.fold
     
-    for fold_idx in fold_indices:
-        print(f"\n--- Evaluating Fold {fold_idx+1} ---")
-        
-        # Load the model for this fold
-        checkpoint_path = os.path.join(args.checkpoint_dir, f"stage2_fold{fold_idx+1}_model.weights.h5")
-        if not os.path.exists(checkpoint_path):
-            print(f"Warning: Checkpoint for fold {fold_idx+1} not found at {checkpoint_path}")
-            continue
-            
-        # Initialize model with the same architecture
-        model = LOINCEncoder(embedding_dim=args.embedding_dim, dropout_rate=0.0)  # No dropout during evaluation
-        
-        # Call once to build model
-        _ = model(inputs=["dummy text"])
-        
-        # Load weights
-        try:
-            model.load_weights(checkpoint_path)
-            print(f"Loaded weights from {checkpoint_path}")
-        except Exception as e:
-            print(f"Error loading weights from {checkpoint_path}: {e}")
-            continue
-        
-        # Get test data for this fold
-        # In a real implementation, you would load the specific test split for this fold
-        fold_test_df = test_df  # Replace with actual fold-specific test data
-        
-        # Evaluate model
-        fold_metrics = evaluate_model(
-            model,
-            fold_test_df,
-            target_loinc_text_dict,
-            use_augmentation=args.augmented,
-            expanded_targets=args.expanded_targets
-        )
-        
-        # Add fold information
-        fold_metrics['fold'] = fold_idx+1
-        
-        # Store results
-        results.append(fold_metrics)
-        
-        # Save fold-specific results
-        output_file = os.path.join(
-            args.output_dir, 
-            f"fold{fold_idx+1}_{'augmented' if args.augmented else 'regular'}_{'expanded' if args.expanded_targets else 'standard'}.csv"
-        )
-        pd.DataFrame([fold_metrics]).to_csv(output_file, index=False)
-        print(f"Results for fold {fold_idx+1} saved to {output_file}")
+    # Create results file name
+    file_name_parts = [f'fold{args.fold}']
+    if args.augmented_test:
+        file_name_parts.append('augmented')
+    if args.expanded_pool:
+        file_name_parts.append('expanded')
+    file_name_parts.append('results.csv')
+    results_file = os.path.join(args.output_dir, '_'.join(file_name_parts))
     
-    if results:
-        # Convert results to DataFrame
-        results_df = pd.DataFrame(results)
-        
-        # Save combined results
-        output_file = os.path.join(
-            args.output_dir, 
-            f"all_folds_{'augmented' if args.augmented else 'regular'}_{'expanded' if args.expanded_targets else 'standard'}.csv"
-        )
-        results_df.to_csv(output_file, index=False)
-        print(f"\nCombined results saved to {output_file}")
-        
-        # Show average metrics across folds
-        print("\nAverage metrics across folds:")
-        for metric in ['top_1_accuracy', 'top_3_accuracy', 'top_5_accuracy']:
-            if metric in results_df.columns:
-                print(f"{metric}: {results_df[metric].mean():.4f} ± {results_df[metric].std():.4f}")
-    else:
-        print("No results to save.")
+    # Save results
+    pd.DataFrame([results]).to_csv(results_file, index=False)
+    print(f"Results saved to {results_file}")
+    
+    # End time
+    end_time = time.time()
+    print(f"Evaluation completed in {end_time - start_time:.2f} seconds")
 
 if __name__ == "__main__":
     main() 
