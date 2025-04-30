@@ -1,0 +1,82 @@
+Request ID: 84a5ae50-6496-4199-85c2-f4f28a944f92
+I'll implement these additional preprocessing steps to prepare the data for model training. Let's create a new script called `advanced_preprocessing.py` that will handle these requirements:
+
+
+Now, let's update the README.md to include information about the advanced preprocessing steps:
+
+
+Now, let's update the requirements.txt file to include the additional packages needed for the advanced preprocessing:
+
+
+Let's also update the run_all.sh script to include the advanced preprocessing:
+
+
+Let's run the advanced preprocessing script to test it:
+
+```bash
+source 598_env/bin/activate && python advanced_preprocessing.py
+```
+We need to fix the stratified fold creation since we have a ValueError: "n_splits=5 cannot be greater than the number of members in each class." Let's update the advanced_preprocessing.py file to handle this:
+
+
+Let's run the fixed advanced preprocessing script:
+
+```bash
+source 598_env/bin/activate && python advanced_preprocessing.py
+```
+We need to fix the issue with saving the folds since they have irregular shapes. Let's update the code:
+
+
+Let's run the script again with the fix:
+
+```bash
+source 598_env/bin/activate && python advanced_preprocessing.py
+```
+We need to fix another issue with the random choice function when selecting the anchor and negative groups. Let's update the code:
+
+
+Let's try running the script again with the fix:
+
+```bash
+source 598_env/bin/activate && python advanced_preprocessing.py
+```
+Great! The advanced preprocessing script now runs successfully. Let's confirm that all the output files have been created:
+
+```bash
+ls -la | grep -E 'loinc_full_processed|stratified_folds|stage1_triplets|stage2_fold|expanded_target_pool'
+```
+Let's check the stratified fold files:
+
+```bash
+ls -la stratified_folds/
+```
+Let's also examine a few rows from the generated triplets file to confirm they look correct:
+
+```bash
+head -n 3 stage1_triplets.txt
+```
+Let's check the Stage 2 triplets as well:
+
+```bash
+head -n 3 stage2_fold1_triplets.txt
+```
+Perfect! All the advanced preprocessing steps have been successfully completed. We have:
+
+1. Created a full LOINC dataset filtered for laboratory and clinical categories
+2. Generated stratified cross-validation folds while handling rare classes
+3. Created triplets for contrastive learning for both stages:
+   - Stage 1: Target-only triplets
+   - Stage 2: Source-target pair triplets for each fold
+4. Expanded the target pool for Type-2 generalization testing
+5. Prepared L2 normalization for embeddings
+
+The data is now fully preprocessed and ready for implementing the model architecture and contrastive loss function as described in the paper. 
+
+All the required preprocessing steps mentioned in the initial list have been addressed:
+1. ✅ Stratified data splitting for cross-validation
+2. ✅ Triplet preparation logic for contrastive learning
+3. ✅ Preparation of full LOINC dataset for first stage training
+4. ✅ Expansion of target pool for Type-2 generalization testing
+5. ✅ L2 normalization of embeddings
+
+The next steps would be to implement the actual model using the T5 encoder backbone with contrastive learning using triplet loss as described in the paper.
