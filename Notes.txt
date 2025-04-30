@@ -1,1 +1,282 @@
-Notes
+Prompt 1:
+I need help completing this project. The goal of the project is to recreate the conclusions and results found in the @LOINC_Standardization_paper.txt using an LLM. Take time to understand this paper. 
+
+I have already recieved access to and downloaded D_LABITEMS.csv from MIMIC-III, and Lonic.csv from Lonic. I have attached the research paper, D_LABITEMS.csv, and the first 1000 lines of Lonic.csv for help writing the prompts.
+
+
+Can you write a prompt for each of the following steps for an LLM to do the following so that it can give me detailed steps to walk through the process:
+1. Write a detailed prompt based on the research paper to use for the LLM to help you write code for the dataset preprocessing. define the problem statement and defining the dimensions or data structure, provide an example of the input data's first couple of rows, for the LLM to help you write code for dataset loading
+    - We would not have to do the entire Lonic data, we can just do a portion of it, for example we can do 10% of the data as long as the 10% of the data we use is randomly sampled. We should start with 10% of the Lonic.csv file.
+
+2. Write a detailed prompt based on the research paper to use with the LLM to help you reproduce code for the implementation of the paper. Provide the LLM with the formal definitions of the algorithms drawn from the target paper and asking the LLM to create an overview of the implementation.
+
+3. Write a detailed prompt to use the LLM to help you reproduce code for the implementation training loop. Also asking the LLM to create a general training loop, and the specifying it to the specific algorithm in the paper as needed.
+
+4. Write a detailed prompt to use the LLM to reproduce code for the metrics and evaluations. Ask the LLM to code the specific algorithm in the paper, 
+
+
+In the prompts make sure to answer the following concerns:
+Can you give step by step instructions on how to set this project up and give me the prompts to use for the LLM.
+The goal is to do it on my M1 Pro Macbook. 
+
+We would not have to do the entire Lonic data, we can just do a portion of it, for example we can do 10% of the data as long as the 10% of the data we use is randomly sampled. We should start with 10% of the Lonic.csv file.
+
+Can you provide detailed LLM prompts to complete this project, and how to get everything set up including the training models (what models need to be set up and how to set it all up). Let me know if you need any clarifications. I have attached the necessary research paper and data files.
+
+
+
+
+
+
+Can you provide instructions on how to set that up and how to randomly sample the data from the csv files. 
+
+Can you provide step by step instructions to complete this project, and how to get everything set up including the training models (what models need to be set up and how to set it all up). Let me know if you need any clarifications. I have attached the necessary research paper and data files.
+
+
+
+
+
+
+
+
+For cleaning data:
+I need help completing this project. The goal of the project is to recreate the conclusions and results found in the @LOINC_Standardization_paper.txt using an LLM. Take time to understand this paper. Since the datasets are too large, we would not have to do the Lonic data found @Lonic.csv, we can maybe just do a portion of it, for example we can do a percentage of the data as long; as the percentage of the data we use is randomly sampled. So based on the research paper provided in the @LOINC_Standardization_paper.txt file can you process the data and then randomly sample the data so that are using only about 10% of the Lonic.csv file?
+
+
+
+
+
+
+
+
+1. Prompt for Dataset Preprocessing Code:
+
+Objective: Write Python code to preprocess datasets for a LOINC code standardization task, based on the methodology described in the attached research paper "LOINC_Standardization_paper.txt".
+
+Problem Statement:
+We need to map local lab test descriptions from the MIMIC-III EHR database to standard LOINC codes. The input consists of two CSV files:
+1.  `D_LABITEMS.csv`: Contains MIMIC-III local lab item definitions, including a label, fluid type, and sometimes a mapped LOINC code.
+2.  `LOINC.csv`: The official LOINC database containing details for various LOINC codes.
+
+Make sure to use "source 598_env/bin/activate" to access the virtual environment.
+
+
+The goal of the project is to recreate the conclusions and results found in the @LOINC_Standardization_paper.txt. Take time to understand this paper. Since the datasets are too large, we can do a random sample of the data found in the Lonic.csv file. Can you write and run a script to take a random sample with about 10% of the data. The based on the provided research paper @LOINC_Standardization_paper.txt can you process that data. Then also follow the process in a seperate script follow  @LOINC_Standardization_paper.txt to process the MIMIC-III data found in the D_LABITEMS.csv file. 
+
+
+
+The goals should include the following data structures and anything else described in @LOINC_Standardization_paper.txt:
+a.  A pandas DataFrame containing source-target pairs derived from `D_LABITEMS.csv`. The 'source_text' should be a concatenation of the 'LABEL' and 'FLUID' fields (lowercase). The 'target_loinc' should be the corresponding 'LOINC_CODE'. We need only pairs where a LOINC code is provided.
+b.  A pandas DataFrame containing information LOINC codes present in `LOINC.csv`. For each sampled LOINC code, we need its 'LOINC_NUM' and relevant text representations: 'LONG_COMMON_NAME', 'SHORTNAME', 'DisplayName', and 'RELATEDNAMES2' (handle potential missing values in these text fields). This will serve as our target-only dataset for Stage 1 training.
+
+Input Data Examples, please reference @LOINC_Standardization_paper.txt and the other files:
+
+`D_LABITEMS.csv` (first few relevant rows):
+"ROW_ID","ITEMID","LABEL","FLUID","CATEGORY","LOINC_CODE"
+546,51346,"Blasts","Cerebrospinal Fluid (CSF)","Hematology","26447-3"
+547,51347,"Eosinophils","Cerebrospinal Fluid (CSF)","Hematology","26451-5"
+548,51348,"Hematocrit, CSF","Cerebrospinal Fluid (CSF)","Hematology","30398-2"
+... (many rows, some with LOINC_CODE, some without)
+
+`LOINC.csv` (first few relevant rows):
+"LOINC_NUM","COMPONENT","PROPERTY",...,"LONG_COMMON_NAME","SHORTNAME","DisplayName","RELATEDNAMES2",...
+"100000-9","Health informatics pioneer and the father of LOINC","Hx",...,"Health informatics pioneer and the father of LOINC","Health Info Pioneer+Father of LOINC","","Clem McDonald; Dr. Clement J. McDonald Jr.; H+P; H+P.HX; Health Info Pioneer+Father of LOINC; History; Honorary; Logical Observation Identifiers Names and Codes; Narrative; P prime; Point in time; Random; Report",...
+"10000-8","R wave duration.lead AVR","Time",...,"R wave duration in lead AVR","R wave dur L-AVR","","Cardiac; Cardio; Cardiology; Durat; ECG; EKG.MEASUREMENTS; Electrocardiogram; Electrocardiograph; Heart Disease; Hrt; Painter's colic; PB; Plumbism; Point in time; QNT; Quan; Quant; Quantitative; R prime; R' wave dur L-AVR; R wave dur L-AVR; Random; Right",...
+... (a larger catalog)
+
+
+Some sample Instructions for Code Generation, please reference @LOINC_Standardization_paper.txt for more details and steps:
+1.  **Load Data:** Load `D_LABITEMS.csv` and `LOINC.csv` into pandas DataFrames. Handle potential quoting issues in CSVs.
+2.  **Process `D_LABITEMS.csv`:**
+    *   Filter rows where 'LOINC_CODE' is present and not empty/null.
+    *   Create a 'source_text' column by concatenating the 'LABEL' and 'FLUID' columns, separated by a space. Convert 'source_text' to lowercase. Handle potential NaN values in 'LABEL' or 'FLUID' gracefully (e.g., treat as empty strings before concatenation).
+    *   Select the 'ITEMID', 'source_text', and 'LOINC_CODE' columns. Rename 'LOINC_CODE' to 'target_loinc'. Store this as `mimic_pairs_df`.
+    *   Report the number of source-target pairs found.
+3.  **Process `LOINC.csv`:**
+    *   Identify unique 'LOINC_NUM' values in the DataFrame.
+    *   Randomly sample 10% of these unique 'LOINC_NUM' values. Ensure reproducibility by setting a random seed (e.g., `random_state=42`).
+    *   Filter the original `LOINC.csv` DataFrame to keep only the rows corresponding to the sampled 'LOINC_NUM's.
+    *   Select the columns: 'LOINC_NUM', 'LONG_COMMON_NAME', 'SHORTNAME', 'DisplayName', 'RELATEDNAMES2'.
+    *   Handle missing/NaN values in the text columns (e.g., replace with empty strings).
+    *   Convert all text columns ('LONG_COMMON_NAME', 'SHORTNAME', 'DisplayName', 'RELATEDNAMES2') to lowercase.
+    *   Store this sampled and processed data as `loinc_targets_df`.
+    *   Report the number of unique LOINC codes in the sample.
+4.  **Output:** Provide Python code with comments explaining each step. 
+
+Display and check the first 5 rows and shapes of the final `mimic_pairs_df` and `loinc_targets_df`.
+Please generate and run the Python code. Make sure to use "source 598_env/bin/activate" to access the virtual environment.
+
+
+
+
+
+
+2. Prompt Model Implementation Overview Code
+
+We have completed the data preprocessing as detailed in @project_details.txt and in the other files. We are going to continue working on the next step to reproducing the research paper found @LOINC_Standardization_paper.txt. I have provided some potential steps, please anaylyze the paper and the context and determine next steps. Can complete the next steps as well.
+
+Make sure to use "source 598_env/bin/activate" to access the virtual environment.
+
+Objective: Provide a Python code overview for implementing the LOINC standardization model architecture and contrastive loss function, as described in the research paper "LOINC_Standardization_paper.txt".
+
+Some sample Background information for Code Generation, please reference @LOINC_Standardization_paper.txt for more details and steps: Background Summary:
+The paper uses a pre-trained Sentence-T5 (ST5-base) model as a backbone. The output embedding from ST5 (768 dims) is passed through a single fully-connected (Dense) layer to project it down to 128 dimensions. This 128-dim embedding is then L2-normalized. Crucially, the weights of the pre-trained ST5 backbone **are kept frozen** during fine-tuning; only the parameters of the projection layer are trained.
+
+The model is trained using a Triplet Loss function based on cosine distance.
+Triplet Loss Formula: L = max(0, D_cos(f(xa), f(xp))^2 - D_cos(f(xa), f(xn))^2 + α)
+Where:
+- f(x) is the final 128-dim L2-normalized embedding from the model for input text x.
+- xa is the anchor sample.
+- xp is the positive sample (same class as anchor).
+- xn is the negative sample (different class from anchor).
+- D_cos is the cosine distance (often implemented as 1 - cosine_similarity). The paper mentions cosine distance, but the formula squares it. Let's clarify this: Implement using cosine distance, perhaps without squaring unless explicitly needed for stability, or stick to the paper's formula. Let's start with the paper's squared version.
+- α is the margin hyperparameter (set to 0.8 in the paper).
+
+Training involves online triplet mining (hard or semi-hard negative sampling within a batch).
+
+Some Possible Instructions for Code Generation:
+1.  **Framework:** Use TensorFlow and Keras.
+2.  **Model Architecture:**
+    *   Keras Model or subclass.
+    *   Load the `sentence-t5-base` model using the `sentence-transformers` library. Integrate this as a (non-trainable) part of the Keras model. A `tf.keras.layers.Lambda` layer or a custom layer might be needed to wrap the sentence-transformer embedding function.
+    *   Add a Keras `Dense` layer to project from 768 to 128 dimensions. Ensure this layer *is* trainable.
+    *   Add an L2 normalization layer (`tf.keras.layers.Lambda` using `tf.math.l2_normalize`).
+3.  **Triplet Loss Function:**
+    *   Python function that takes anchor, positive, and negative embeddings (output from the model, shape [batch_size, 128]) as input.
+    *   Implement the Triplet Loss calculation using TensorFlow operations, following the formula L = max(0, D_cos(xa, xp)^2 - D_cos(xa, xn)^2 + α). Use `alpha = 0.8`. Remember `D_cos(a, b) = 1 - cosine_similarity(a, b)`.
+    *   The function should return the mean loss over the batch.
+4.  **Triplet Mining:**
+5.  **Output:** Provide code defining the model class/function and the loss function, with clear explanations and comments.
+
+Please generate and test the code. Make sure to use "source 598_env/bin/activate" to access the virtual environment.
+Complete all the necessary steps up until, the next step being to reproduce code for the implementation training loop.
+
+./run_model.sh predict "your lab test description"
+
+
+
+
+
+3. Training Loop Code
+
+It seems like the begining of the model implementation has been completed. Please finish the necessary steps for that based on @LOINC_Standardization_paper.txt before continuing. We are going to continue working on the next step to reproducing the research paper found @LOINC_Standardization_paper.txt. I have provided some potential steps, please anaylyze the paper and the context and determine next steps. Can complete the next steps as well.
+
+Make sure to use "source 598_env/bin/activate" to access the virtual environment.
+
+Objective: Write Python code for the two-stage training loop for the LOINC standardization model, based on the methodology in "LOINC_Standardization_paper.txt" and the model/loss defined previously, and complete all the other necessary steps to do this and anything else that needs to be done based on the research paper found at @LOINC_Standardization_paper.txt.
+
+Some sample Background information for Code Generation, please reference @LOINC_Standardization_paper.txt for more details and steps:
+Background Summary:
+The training has two stages:
+1.  **Stage 1:** Fine-tune the projection layer using **only augmented LOINC target data** (from `loinc_targets_df` generated previously). The paper used ~78k targets; we are using a 10% sample. Use **semi-hard negative mining**. Learning rate = 1e-4. Train for 30 epochs. ST5 backbone is frozen.
+2.  **Stage 2:** Further fine-tune the projection layer using **augmented MIMIC source-target pairs** (from `mimic_pairs_df` which should have been generated previously). Use **hard negative mining**. Learning rate = 1e-5. Use 5-fold cross-validation. ST5 backbone remains frozen. Add dropout before the final FC layer for regularization during this stage (as mentioned in the paper).
+
+Prerequisites (Assume these exist from previous steps, or complete if necessary):
+*   `model`: The Keras model (ST5-frozen + Dense(128) + L2Norm).
+*   `triplet_loss_fn`: The Triplet Loss function.
+*   `loinc_targets_df`: DataFrame with sampled LOINC target texts.
+*   `mimic_pairs_df`: DataFrame with MIMIC source-target pairs.
+*   A function `augment_text(text_list)` that takes a list of strings and returns a list of augmented strings (we will define this separately, but assume it exists for the loop).
+*   A function `create_triplets(embeddings, labels, strategy)` that performs online triplet mining within a batch (given embeddings, corresponding labels/ids, and a strategy 'hard' or 'semi-hard') and returns anchor, positive, negative indices or embeddings. *If using `tensorflow-similarity`, show how its loss object handles this.* *Otherwise, provide a basic placeholder implementation outline.*
+
+Some sample guidance, please reference @LOINC_Standardization_paper.txt for more details:
+Check each of these steps with @LOINC_Standardization_paper.txt to make sure it is done properly.
+1.  **Framework:** Use TensorFlow/Keras.
+2.  **Data Preparation Functions:**
+    *   Include functions `prepare_stage1_batch(loinc_df, batch_size)` and `prepare_stage2_batch(mimic_df, batch_size)` that would handle creating batches, applying augmentation, and returning inputs and labels needed for triplet mining, and everything else necesary.
+3.  **Stage 1 Training Loop:**
+    *   Set optimizer (Adam, lr=1e-4).
+    *   Loop for 30 epochs.
+    *   Inside the epoch loop, iterate through batches of the sampled LOINC data (`loinc_targets_df`).
+    *   For each batch:
+        *   Call `prepare_stage1_batch`. Assume augmentation happens inside.
+        *   Pass batch texts through the `model` to get embeddings within a `tf.GradientTape` context.
+        *   Perform **semi-hard** online triplet mining using `create_triplets` or `tensorflow-similarity.losses.TripletLoss`.
+        *   Calculate loss using `triplet_loss_fn` (or directly if using TF-Similarity loss).
+        *   Calculate gradients **only for the trainable variables** (the Dense layer).
+        *   Apply gradients using the optimizer.
+        *   Track and print loss periodically.
+    *   Show how to save the model weights (specifically the Dense layer) after Stage 1.
+4.  **Stage 2 Training Loop (Cross-Validation):**
+    *   Implement a 5-fold cross-validation structure using `sklearn.model_selection.KFold` on `mimic_pairs_df`.
+    *   For each fold:
+        *   Split data into train/validation sets for the fold.
+        *   **Load Stage 1 weights** into the model's Dense layer. Reset optimizer state.
+        *   Set optimizer (Adam, lr=1e-5).
+        *   Add a Dropout layer *before* the Dense projection layer *for this stage*. Modify the model definition or use the `training=True` argument if using a functional model.
+        *   Loop for a specified number of epochs (e.g., 10-20, if not specified by paper for Stage 2, choose a reasonable number).
+        *   Inside the epoch loop, iterate through batches of the fold's training data.
+        *   For each batch:
+            *   Call `prepare_stage2_batch`. Assume augmentation happens inside. This needs to return source texts, target texts, and labels/LOINC codes for mining.
+            *   Pass batch texts through the `model` (with dropout active) to get embeddings within `tf.GradientTape`.
+            *   Perform **hard** online triplet mining. Remember triplets can be formed using source/target variations of the *same* LOINC code as positive pairs.
+            *   Calculate loss.
+            *   Calculate gradients for the Dense layer.
+            *   Apply gradients.
+            *   Track and print training loss.
+        *   include a validation step at the end of each epoch using the fold's validation set (calculate validation loss, maybe Top-k accuracy if efficient enough).
+        *   Store results (e.g., final validation loss/accuracy) for each fold.
+5.  **Triplet Mining Implementation Detail:** If *not* using a library like `tensorflow-similarity`, provide a more detailed sketch or function signature for `create_triplets(embeddings, labels, strategy)` showing how pairwise distances are calculated and how hard/semi-hard triplets are selected based on those distances and labels within the batch.
+6.  **Output:** Provide commented code for the training loops and helper functions, and test everything.
+
+Please generate the Python code, test everything, and complete this step fully. Test the training loop.
+Make sure to use "source 598_env/bin/activate" to access the virtual environment.
+Complete whatever else needs to be done in this stage to reproduce the results for the research paper (@LOINC_Standardization_paper.txt).
+
+If it will take too long to run can you run and test a smaller sample and then provide instructions and commands on how to test the larger sample.
+
+
+
+
+4. Metrics and Evaluation Code Prompt
+
+
+Please ensure everything up until evaluation has been completed. Please finish the necessary steps for that based on @LOINC_Standardization_paper.txt before continuing. We are going to continue working on the next step to reproducing the research paper found @LOINC_Standardization_paper.txt. I have provided some potential steps, please anaylyze the paper and the context and determine next steps.
+
+Make sure to use "source 598_env/bin/activate" to access the virtual environment.
+
+Objective: Write code to evaluate the trained LOINC standardization model using Top-k accuracy, following the paper's evaluation methodology @LOINC_Standardization_paper.txt.
+
+
+Some sample Background information for Code Generation, please reference @LOINC_Standardization_paper.txt for more details and steps:
+Background Summary:
+The evaluation process involves:
+1.  Taking a source text (from the test set).
+2.  Embedding the source text using the **trained model** (frozen ST5 + trained projection layer + L2 norm).
+3.  Embedding **all unique target LOINC codes** in the evaluation pool using the same trained model. The paper evaluates against two pools:
+    *   The 571 unique LOINC codes present in the MIMIC-III dataset.
+    *   An expanded pool of 2313 unique LOINC codes (the 571 + top 2000 common LOINCs, excluding duplicates).
+4.  Calculating the **cosine similarity** between the source embedding and all target embeddings.
+5.  Ranking the targets based on similarity (higher similarity = closer).
+6.  Determining if the *correct* target LOINC code for the source text is within the top 'k' ranked targets.
+7.  Calculating Top-k accuracy as the percentage of test samples where the correct target is found in the top k predictions. The paper uses k=1, 3, and 5.
+
+Prerequisites (Check and make sure these exist and complete any other necessary prerequisites):
+*   `model`: The trained Keras model (after Stage 2 fine-tuning for a specific fold).
+*   `test_df`: A pandas DataFrame containing test source texts and their corresponding ground truth `target_loinc`.
+*   `target_loinc_embeddings_dict`: A pre-computed dictionary mapping unique target LOINC codes (e.g., from the 571 or 2313 pool) to their embeddings (shape [128,]) generated by the *same trained model*.
+*   `unique_target_loincs`: A list of the unique target LOINC codes corresponding to the embeddings in the dictionary.
+
+
+Some sample guidance, please reference @LOINC_Standardization_paper.txt for more details:
+1.  **Framework:** Use Python with NumPy/SciPy/Scikit-learn for calculations.
+2.  **Embedding Function:** Assume the Keras `model` has a `predict` or `__call__` method that takes a list of texts and returns their L2-normalized 128-dim embeddings. If not trivial, provide a helper function `get_embeddings(texts, model)` that does this.
+3.  **Precompute Target Embeddings (Helper):** Show how `target_loinc_embeddings_dict` would be generated. This involves:
+    *   Getting the text representation for each unique target LOINC (e.g., using 'LONG_COMMON_NAME' from the `loinc_targets_df` or a full LOINC table).
+    *   Embedding these texts using the trained `model`.
+    *   Storing them in a dictionary keyed by LOINC code.
+4.  **Evaluation Function:** Create a function `calculate_top_k_accuracy(test_df, target_loinc_embeddings_dict, model, k_values=[1, 3, 5])`.
+    *   This function should take the test DataFrame, the precomputed target embeddings dictionary, the trained model, and a list of k values.
+    *   Convert the `target_loinc_embeddings_dict` into an ordered list of embeddings (`target_embeddings_matrix`) and a corresponding list of `target_loinc_codes`.
+    *   Iterate through each row in `test_df`.
+    *   For each test source text:
+        *   Get its embedding using the `model`.
+        *   Calculate cosine similarity between the source embedding and *all* embeddings in `target_embeddings_matrix`. (Tip: `sklearn.metrics.pairwise.cosine_similarity` is efficient). Remember cosine similarity is high for similar items, opposite of distance.
+        *   Get the indices of the targets sorted by descending similarity.
+        *   Find the top k target LOINC codes based on these sorted indices.
+        *   Check if the ground truth `target_loinc` for the current test sample is present in the predicted top k LOINC codes.
+    *   Calculate the accuracy for each k in `k_values` (number of hits / total test samples).
+    *   Return a dictionary mapping each k to its accuracy.
+5.  **Output:** Provide commented code for the evaluation functions and test all the parts.
+
+Please generate and test the code.
