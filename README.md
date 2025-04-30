@@ -10,6 +10,8 @@ This repository implements the methodology described in the paper "Automated LOI
   - `train.py`: Two-stage training loop implementation
   - `evaluation.py`: Model evaluation code
   - `inference.py`: Inference code for making predictions
+  - `error_analysis.py`: Error analysis for model predictions
+  - `ablation_study.py`: Ablation studies for different model components
   - `checkpoints/`: Directory for saved model checkpoints
 
 - `preprocessing/`: Data preprocessing and augmentation code
@@ -20,6 +22,7 @@ This repository implements the methodology described in the paper "Automated LOI
   - `mimic_pairs_processed.csv`: Processed MIMIC source-target pairs for Stage 2 training
 
 - `run_model.sh`: Script to run training, evaluation, and inference
+- `run_analysis.sh`: Script to run error analysis and ablation studies
 
 ## Installation
 
@@ -31,7 +34,7 @@ This repository implements the methodology described in the paper "Automated LOI
 
 2. Install dependencies:
    ```bash
-   pip install tensorflow tensorflow-hub tensorflow-text matplotlib tqdm scikit-learn pandas numpy
+   pip install tensorflow tensorflow-hub tensorflow-text matplotlib tqdm scikit-learn pandas numpy seaborn
    ```
 
 ## Usage
@@ -81,6 +84,25 @@ To evaluate a specific fold:
 ./run_model.sh evaluate --test_file output/mimic_pairs_processed.csv --fold_idx 0
 ```
 
+### Error Analysis and Ablation Studies
+
+To run error analysis and ablation studies:
+
+```bash
+./run_analysis.sh
+```
+
+The error analysis identifies:
+- Commonly misclassified LOINC codes
+- Error patterns and categories (e.g., property mismatches, similar descriptions)
+- Relationship between source text complexity and model performance
+
+The ablation studies test the impact of:
+- Two-stage fine-tuning approach
+- Different mining strategies (hard vs semi-hard negative mining)
+- Data augmentation techniques
+- Model size and architecture
+
 ### Inference
 
 To make predictions for a source text:
@@ -116,12 +138,38 @@ The model consists of:
 - Add dropout (0.1) before the projection layer for regularization
 - T5 backbone remains frozen
 
+## Error Analysis
+
+The error analysis categorizes prediction errors into several types:
+- **Property Mismatch**: Misclassification between qualitative and quantitative properties
+- **Specimen Mismatch**: Confusion between different specimen types (e.g., blood vs serum)
+- **Methodological Differences**: Confusion between different measurement methods
+- **Similar Description**: Text descriptions are very similar but represent different concepts
+- **Ambiguous Source**: Source text lacks sufficient information for correct mapping
+
+Error analysis results are stored in the `results/error_analysis` directory, including:
+- CSV files with detailed error information for each sample
+- Text summaries of error patterns
+- Visualizations of error categories and source text complexity
+
+## Ablation Studies
+
+The ablation studies analyze the contribution of different components to model performance:
+
+1. **Two-Stage Fine-Tuning**: Compares the full two-stage approach to using only Stage 2 training
+2. **Mining Strategies**: Compares hard negative vs semi-hard negative mining
+3. **Data Augmentation**: Measures the impact of data augmentation techniques
+4. **Model Size**: Tests different T5 model sizes (base vs large)
+
+Ablation results are stored in the `results/ablation_study` directory with comparative visualizations.
+
 ## Performance
 
 The model is evaluated using the following metrics:
 
 - Top-k accuracy (k=1, 3, 5, 10)
 - Mean Reciprocal Rank (MRR)
+- Error category distribution
 
 ## References
 

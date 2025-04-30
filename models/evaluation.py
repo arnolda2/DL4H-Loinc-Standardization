@@ -253,21 +253,23 @@ def main():
     parser.add_argument('--loinc_file', type=str, required=True, 
                         help='Path to LOINC data CSV')
     parser.add_argument('--checkpoint_dir', type=str, required=True, 
-                        help='Directory with model checkpoints')
+                        help='Directory containing model checkpoints')
     parser.add_argument('--fold', type=int, default=0, 
-                        help='Fold index')
+                        help='Fold to evaluate (0-indexed)')
     parser.add_argument('--output_dir', type=str, default='results', 
                         help='Directory to save results')
-    parser.add_argument('--k_values', type=int, nargs='+', default=[1, 3, 5], 
+    parser.add_argument('--k_values', type=int, nargs='+', default=[1, 3, 5, 10], 
                         help='k values for Top-k accuracy')
     parser.add_argument('--batch_size', type=int, default=16, 
                         help='Batch size for inference')
-    parser.add_argument('--expanded_pool', action='store_true', 
-                        help='Use expanded target pool')
-    parser.add_argument('--augmented_test', action='store_true', 
-                        help='Test on augmented data')
-    parser.add_argument('--original_only', action='store_true', 
-                        help='Use only original samples from augmented test data')
+    parser.add_argument('--expanded_pool', action='store_true',
+                        help='Whether to use expanded target pool')
+    parser.add_argument('--augmented_test', action='store_true',
+                        help='Whether this is augmented test data')
+    parser.add_argument('--original_only', action='store_true',
+                        help='Only use original samples from augmented test data')
+    parser.add_argument('--ablation_id', type=str, default=None,
+                        help='Identifier for ablation study (used for output filename)')
     args = parser.parse_args()
     
     # Create output directory
@@ -302,12 +304,17 @@ def main():
     # Add fold information to results
     results['fold'] = args.fold
     
-    # Create results file name
+    # Save results to CSV
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Create output filename
     file_name_parts = [f'fold{args.fold}']
     if args.augmented_test:
         file_name_parts.append('augmented')
     if args.expanded_pool:
         file_name_parts.append('expanded')
+    if args.ablation_id:
+        file_name_parts.append(f'ablation_{args.ablation_id}')
     file_name_parts.append('results.csv')
     results_file = os.path.join(args.output_dir, '_'.join(file_name_parts))
     
