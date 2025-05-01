@@ -122,7 +122,9 @@ def compute_embeddings(texts, model, batch_size=16):
     """
     try:
         all_embeddings = []
-        for i in range(0, len(texts), batch_size):
+        # Add tqdm progress bar to show progress during embedding computation
+        for i in tqdm(range(0, len(texts), batch_size), desc="Computing embeddings", 
+                     total=(len(texts) + batch_size - 1) // batch_size):
             batch_texts = texts[i:i + batch_size]
             # Ensure all texts are strings
             batch_texts = [str(text) if not isinstance(text, str) else text for text in batch_texts]

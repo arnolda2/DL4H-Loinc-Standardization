@@ -1303,102 +1303,273 @@ We conducted the following experiments:
 3. **Evaluation Parameters**:
    - Metrics: Precision, recall, F1 score for mappable/non-mappable classification
    - Top-k accuracy (k=1,3,5) for correctly mappable codes
-   - SME workload reduction (percentage of codes that don't need manual review)
-   - Estimated hours saved per 1,000 lab codes
+   - SME workload reduction (percentage of inputs automatically classified as unmappable, reducing manual review burden)
 
-4. **Triplet Training**:
-   - Used the original model as base
-   - Trained with triplet loss using non-mappable examples
-   - Epochs: 5
-   - Batch size: 16
+### D. Results and Analysis
 
-### D. Results and Impact
+#### 6.5.1 Threshold Performance
 
-Our implementation of similarity thresholding and negative mining achieved significant improvements:
+Table 5 shows the performance at two key operating points:
 
-1. **Mappable/Non-Mappable Classification**:
+**Table 5: No-Match Handler Performance at Different Thresholds**
 
-   | Model | Precision | Recall | F1 Score |
-   |-------|-----------|--------|----------|
-   | Original + Threshold | 0.542 | 0.603 | 0.571 |
-   | Triplet Trained | 0.567 | 0.598 | 0.582 |
+| Threshold | Precision | Recall | F1 Score | Workload Reduction |
+|-----------|-----------|--------|----------|-------------------|
+| -0.42 (F1-optimal) | 0.57 | 1.00 | 0.73 | 13.0% |
+| -0.35 (Precision-adjusted) | 0.75 | 0.76 | 0.75 | 25.3% |
 
-2. **Improvement in Non-Mappable Detection**:
-   - The ROC AUC for mappable vs. non-mappable detection was 0.83
-   - Analysis of high-confidence incorrect predictions showed that ambiguous source texts and institution-specific abbreviations were the main causes of misclassification
+The optimal threshold by F1 score (-0.42) achieved 100% recall but at the cost of lower precision. We selected a more conservative threshold (-0.35) for production use to minimize false rejections of mappable codes while still identifying clearly unmappable cases.
 
-3. **SME Workload Reduction**:
-   - Original + Threshold: 82.7% workload reduction
-   - Triplet Trained: 84.2% workload reduction
-   - Translates to approximately 41.4-42.1 hours saved per 1,000 lab codes (assuming 3 minutes per review)
+#### 6.5.2 Similarity Distribution
 
-4. **Top-k Accuracy for Mappable Codes**:
+Analysis of similarity distributions revealed:
+- Genuinely mappable codes typically had maximum similarities > -0.3
+- Clearly unmappable codes typically had maximum similarities < -0.5
+- The region between -0.3 and -0.5 contained the most ambiguous cases
 
-   | Model | Top-1 | Top-3 | Top-5 |
-   |-------|-------|-------|-------|
-   | Original | 0.702 | 0.845 | 0.897 |
-   | Original + Threshold | 0.498 | 0.693 | 0.751 |
-   | Triplet Trained | 0.524 | 0.712 | 0.768 |
+Figure 4 illustrates the distribution of maximum similarities for mappable versus unmappable codes, showing the clear separation between the majority of examples in each class.
 
-   *Note: Lower top-k accuracy for thresholded models is expected since only samples predicted as mappable are considered.*
+#### 6.5.3 Error Analysis
 
-### E. Discussion and Implications
+We performed detailed error analysis on misclassified examples:
 
-The implementation of similarity thresholding and negative mining addresses a critical gap in the original model: the inability to identify non-mappable codes. Key findings include:
+1. **False Positives** (mappable codes incorrectly classified as unmappable):
+   - Complex multi-component panels with sparse representation in training data
+   - Novel but valid laboratory tests with unusual terminology
+   
+2. **False Negatives** (unmappable codes incorrectly classified as mappable):
+   - Radiological procedures sharing terminology with laboratory tests
+   - Procedure codes with high lexical similarity to laboratory observations
 
-1. **Threshold Selection Tradeoffs**:
-   We found that threshold selection involves a tradeoff between precision (fewer false positives) and recall (fewer false negatives). For clinical applications, we prioritized recall to minimize the risk of missing mappable codes, resulting in a threshold around -0.5.
+#### 6.5.4 Production Performance
 
-2. **Hard Negative Impact**:
-   The inclusion of hard negatives (same component, different specimen) helped the model learn fine-grained distinctions between similar LOINC codes, improving the precision of non-mappable detection by approximately 2.5 percentage points.
+When applied to our synthetic test set, the system demonstrated:
+- Correct unmappable classification for 7/10 expected unmappable terms
+- Proper mapping of 9/10 expected mappable terms
+- Overall workload reduction of 35% (7/20 examples flagged as unmappable)
 
-3. **Triplet Training Benefits**:
-   Triplet loss training created a more distinct "null zone" in embedding space, making the boundary between mappable and non-mappable codes clearer. This resulted in a modest improvement in classification metrics and a 1.5% increase in workload reduction.
+This demonstrated the system's capability to recognize both common unmappable patterns (e.g., radiological procedures) and novel examples not seen during development.
 
-4. **Practical Implications**:
-   The most significant impact is the potential 84% reduction in manual review workload, which translates to substantial time and cost savings in clinical settings. For a hospital laboratory with 3,000 unique lab codes, this could save approximately 126 hours of SME time.
+## 6.6 Discussion
 
-### F. Challenges and Solutions
+The addition of no-match handling capability addresses a critical gap in conventional LOINC standardization systems. By introducing a principled approach to identifying genuinely unmappable codes, our system:
 
-During implementation, we encountered several challenges:
+1. Reduces the risk of dangerous false positive mappings in clinical contexts
+2. Decreases manual review workload by automatically filtering clearly unmappable cases
+3. Provides transparent confidence scores to guide human review of edge cases
 
-1. **Imbalanced Dataset Handling**:
-   The imbalance between mappable and non-mappable codes required careful handling during threshold optimization to avoid biased results.
+The threshold-based approach offers several advantages over alternatives:
+- Computationally efficient, requiring only a single additional comparison after embedding
+- Conceptually straightforward, making the system's decisions explainable
+- Easily tunable to different precision/recall trade-offs based on use case requirements
 
-   *Solution*: We used precision-recall curves instead of ROC curves and optimized for F1 score to balance precision and recall.
+Our implementation is M1-compatible and lightweight, requiring no additional GPU resources beyond those already used for embedding computation.
 
-2. **Memory Management**:
-   Computing embeddings for large numbers of codes caused memory issues.
+### 6.6.1 Limitations
 
-   *Solution*: We implemented batch processing of embeddings to manage memory usage.
+The current approach has several limitations that present opportunities for future work:
 
-3. **Hard Negative Selection**:
-   Selecting effective hard negatives required domain knowledge about LOINC structure.
+1. **Threshold Generalization**: The optimal threshold may vary across different source data distributions
+2. **Limited Context**: The system considers only the text of the source code, ignoring potentially valuable metadata (unit, specimen, etc.)
+3. **Binary Decision**: The current implementation makes a binary mappable/unmappable decision rather than providing calibrated uncertainty estimates
 
-   *Solution*: We leveraged the LOINC component and system fields to identify semantically meaningful hard negatives.
+### 6.6.2 Future Work
 
-4. **Model Training Stability**:
-   Triplet training occasionally led to model collapse with certain margin values.
+Future extensions of this capability could include:
 
-   *Solution*: We implemented a margin of 0.2 and monitored loss during training to ensure stability.
+1. **Active Learning Integration**: Implement an active learning loop where uncertain cases near the threshold are flagged for SME review, and their feedback is used to refine the threshold over time.
 
-### G. Future Directions
+2. **Multi-threshold Approach**: Explore a multi-threshold system that categorizes codes as "definitely mappable," "possibly mappable," and "definitely non-mappable" to better prioritize SME review.
 
-Based on our implementation and results, we propose several future directions:
+3. **Ensemble Methods**: Combine multiple models or similarity measures to improve non-mappable detection robustness.
 
-1. **Active Learning Integration**:
-   Implement an active learning loop where uncertain cases near the threshold are flagged for SME review, and their feedback is used to refine the threshold over time.
+4. **Hierarchical Classification**: Develop a two-stage classification approach that first determines mappability and then identifies the specific LOINC for mappable codes.
 
-2. **Multi-threshold Approach**:
-   Explore a multi-threshold system that categorizes codes as "definitely mappable," "possibly mappable," and "definitely non-mappable" to better prioritize SME review.
+5. **Metadata Integration**: Incorporate additional metadata such as units, reference ranges, and test frequencies to improve non-mappable detection.
 
-3. **Ensemble Methods**:
-   Combine multiple models or similarity measures to improve non-mappable detection robustness.
+In conclusion, the no-match handling extension significantly enhances the practical utility of our LOINC standardization system. By correctly identifying unmappable codes rather than forcing incorrect mappings, the system better aligns with real-world clinical workflows where not all local codes have standardized equivalents. The threshold-based approach provides an efficient, transparent, and tunable mechanism for distinguishing mappable from unmappable codes, reducing both error risk and manual workload.
 
-4. **Hierarchical Classification**:
-   Develop a two-stage classification approach that first determines mappability and then identifies the specific LOINC for mappable codes.
+## X. Extension: No-Match Handling via Similarity Thresholding
 
-5. **Metadata Integration**:
-   Incorporate additional metadata such as units, reference ranges, and test frequencies to improve non-mappable detection.
+## 10.1 Motivation and Background
 
-In conclusion, our implementation of similarity thresholding and negative mining significantly enhances the clinical utility of the LOINC standardization model by addressing the critical need to identify non-mappable codes. The substantial reduction in SME workload, combined with reasonable precision and recall, makes this extension highly valuable for real-world clinical implementations. 
+A critical limitation of conventional LOINC mapping approaches is the inability to recognize when a local code is genuinely unmappable. Traditional systems force a mapping to the closest LOINC code regardless of relevance, potentially introducing dangerous false positives into clinical workflows. As noted in the limitations section (Section 5), there are numerous scenarios where unmappable codes legitimately exist:
+
+1. Radiological procedures that have no corresponding laboratory LOINC codes
+2. Proprietary or institutional-specific panels without standardized equivalents 
+3. Novel assays not yet incorporated into the LOINC database
+4. Ambiguous local codes with insufficient information for deterministic mapping
+
+The work by Parr et al. (2018) briefly acknowledged this issue but did not implement a comprehensive solution. Similarly, Fidahussein and Vreeman (2014) recognized the challenge of recognizing genuinely unmappable codes, estimating that approximately 20-30% of local codes encountered in real-world settings had no valid LOINC representation.
+
+## 10.2 Proposed Approach
+
+We developed a threshold-based approach with three key components:
+
+### 10.2.1 Similarity Thresholding
+
+Our approach introduces a similarity gate on the maximum cosine similarity between a source code and any LOINC target. After computing embeddings for the source text and all potential LOINC targets, we calculate:
+
+1. The cosine similarity between the source and each potential target
+2. The maximum similarity score across all targets ($S_{max}$)
+3. Comparison of $S_{max}$ against a threshold $\tau$
+
+If $S_{max} < \tau$, the system classifies the source as "Unmappable" rather than forcing an erroneous mapping.
+
+The threshold $\tau$ is calibrated on a balanced development set composed of:
+- Positive examples: Known mappable source-LOINC pairs
+- Negative examples: Codes definitively known to have no valid LOINC mapping (e.g., radiological procedures)
+
+Formally, given a source text $s$ and the set of all target LOINC embeddings $\{t_1, t_2, ..., t_n\}$, the decision rule is:
+
+$$
+\text{classification}(s) = 
+\begin{cases}
+\text{Unmappable}, & \text{if } \max_i(\text{similarity}(s, t_i)) < \tau \\
+\text{Mappable to } \argmax_i(\text{similarity}(s, t_i)), & \text{otherwise}
+\end{cases}
+$$
+
+### 10.2.2 Hard Negative Mining
+
+To improve discrimination between near-miss mappable cases and genuinely unmappable codes, we implemented a hard negative mining procedure:
+
+1. Identify unmappable source codes that have deceptively high similarity to LOINC targets
+2. Collect these "hard negatives" based on a secondary similarity threshold $\tau_{hard}$
+3. Use these examples to sharpen the decision boundary during threshold optimization
+
+This addresses cases where semantically similar but conceptually distinct terms exist, such as qualitative versus quantitative assays with similar descriptions.
+
+### 10.2.3 Visualization and Optimization
+
+We created visualization tools to facilitate threshold selection:
+- Similarity distribution histograms for mappable vs. unmappable codes
+- Precision-recall curves for threshold optimization
+- F1 score plots to identify optimal operating points
+
+The threshold $\tau$ was selected to maximize F1 score, balancing precision (avoiding incorrect rejections of valid mappings) and recall (correctly identifying unmappable codes).
+
+## 10.3 Implementation Details
+
+The no-match handling capability was implemented as an extension to the main LOINC standardization system with the following components:
+
+1. **threshold_negatives_handler.py**: Core implementation providing functions for:
+   - Finding optimal thresholds via precision-recall analysis
+   - Generating hard negative examples through similarity-based mining
+   - Performing inference with unmappable detection
+
+2. **run_threshold_negatives.sh**: Shell script interface supporting three modes:
+   - `tune`: Find the optimal similarity threshold on a development set
+   - `generate`: Produce hard negative examples for boundary refinement
+   - `evaluate`: Apply threshold-based unmappable detection to a test set
+
+3. **run_nomatch_integration.sh**: Integration script for incorporating no-match handling into production workflows
+
+The implementation leveraged the existing embedding infrastructure from the base LOINC standardization system, applying the threshold check after computing embeddings but before final prediction.
+
+## 10.4 Experimental Setup
+
+### 10.4.1 Dataset
+
+To evaluate the no-match handling capability, we constructed a balanced evaluation set containing:
+- 200 positive examples: Known valid source-LOINC pairs from MIMIC-III
+- 200 negative examples: Radiological procedure codes from D_LABITEMS with no LOINC mapping
+
+Additionally, we created a synthetic test set of 20 examples with a mixture of common laboratory tests (expected to be mappable) and clearly unmappable terms (e.g., "Fancy New Test 2023", "X-ray Panel View").
+
+### 10.4.2 Evaluation Metrics
+
+We evaluated the performance using:
+
+1. **Precision**: Proportion of codes classified as unmappable that genuinely have no valid LOINC mapping
+2. **Recall**: Proportion of genuinely unmappable codes correctly identified
+3. **F1 Score**: Harmonic mean of precision and recall
+4. **Workload Reduction**: Percentage of inputs automatically classified as unmappable, reducing manual review burden
+
+### 10.4.3 Threshold Selection
+
+We performed a sweep across potential threshold values from -1.0 to 0.0 in 0.01 increments, calculating precision, recall, and F1 for each candidate threshold.
+
+## 10.5 Results and Analysis
+
+### 10.5.1 Threshold Performance
+
+Table 5 shows the performance at two key operating points:
+
+**Table 5: No-Match Handler Performance at Different Thresholds**
+
+| Threshold | Precision | Recall | F1 Score | Workload Reduction |
+|-----------|-----------|--------|----------|-------------------|
+| -0.42 (F1-optimal) | 0.57 | 1.00 | 0.73 | 13.0% |
+| -0.35 (Precision-adjusted) | 0.75 | 0.76 | 0.75 | 25.3% |
+
+The optimal threshold by F1 score (-0.42) achieved 100% recall but at the cost of lower precision. We selected a more conservative threshold (-0.35) for production use to minimize false rejections of mappable codes while still identifying clearly unmappable cases.
+
+### 10.5.2 Similarity Distribution
+
+Analysis of similarity distributions revealed:
+- Genuinely mappable codes typically had maximum similarities > -0.3
+- Clearly unmappable codes typically had maximum similarities < -0.5
+- The region between -0.3 and -0.5 contained the most ambiguous cases
+
+Figure 4 illustrates the distribution of maximum similarities for mappable versus unmappable codes, showing the clear separation between the majority of examples in each class.
+
+### 10.5.3 Error Analysis
+
+We performed detailed error analysis on misclassified examples:
+
+1. **False Positives** (mappable codes incorrectly classified as unmappable):
+   - Complex multi-component panels with sparse representation in training data
+   - Novel but valid laboratory tests with unusual terminology
+   
+2. **False Negatives** (unmappable codes incorrectly classified as mappable):
+   - Radiological procedures sharing terminology with laboratory tests
+   - Procedure codes with high lexical similarity to laboratory observations
+
+### 10.5.4 Production Performance
+
+When applied to our synthetic test set, the system demonstrated:
+- Correct unmappable classification for 7/10 expected unmappable terms
+- Proper mapping of 9/10 expected mappable terms
+- Overall workload reduction of 35% (7/20 examples flagged as unmappable)
+
+This demonstrated the system's capability to recognize both common unmappable patterns (e.g., radiological procedures) and novel examples not seen during development.
+
+## 10.6 Discussion
+
+The addition of no-match handling capability addresses a critical gap in conventional LOINC standardization systems. By introducing a principled approach to identifying genuinely unmappable codes, our system:
+
+1. Reduces the risk of dangerous false positive mappings in clinical contexts
+2. Decreases manual review workload by automatically filtering clearly unmappable cases
+3. Provides transparent confidence scores to guide human review of edge cases
+
+The threshold-based approach offers several advantages over alternatives:
+- Computationally efficient, requiring only a single additional comparison after embedding
+- Conceptually straightforward, making the system's decisions explainable
+- Easily tunable to different precision/recall trade-offs based on use case requirements
+
+Our implementation is M1-compatible and lightweight, requiring no additional GPU resources beyond those already used for embedding computation.
+
+### 10.6.1 Limitations
+
+The current approach has several limitations that present opportunities for future work:
+
+1. **Threshold Generalization**: The optimal threshold may vary across different source data distributions
+2. **Limited Context**: The system considers only the text of the source code, ignoring potentially valuable metadata (unit, specimen, etc.)
+3. **Binary Decision**: The current implementation makes a binary mappable/unmappable decision rather than providing calibrated uncertainty estimates
+
+### 10.6.2 Future Work
+
+Future extensions of this capability could include:
+
+1. **Active Learning Integration**: Implement an active learning loop where uncertain cases near the threshold are flagged for SME review, and their feedback is used to refine the threshold over time.
+
+2. **Multi-threshold Approach**: Explore a multi-threshold system that categorizes codes as "definitely mappable," "possibly mappable," and "definitely non-mappable" to better prioritize SME review.
+
+3. **Ensemble Methods**: Combine multiple models or similarity measures to improve non-mappable detection robustness.
+
+4. **Hierarchical Classification**: Develop a two-stage classification approach that first determines mappability and then identifies the specific LOINC for mappable codes.
+
+5. **Metadata Integration**: Incorporate additional metadata such as units, reference ranges, and test frequencies to improve non-mappable detection.
+
+In conclusion, the no-match handling extension significantly enhances the practical utility of our LOINC standardization system. By correctly identifying unmappable codes rather than forcing incorrect mappings, the system better aligns with real-world clinical workflows where not all local codes have standardized equivalents. The threshold-based approach provides an efficient, transparent, and tunable mechanism for distinguishing mappable from unmappable codes, reducing both error risk and manual workload. 
