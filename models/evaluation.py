@@ -134,7 +134,7 @@ def compute_embeddings(texts, model, batch_size=16):
         
         # Concatenate all batches
         embeddings = np.concatenate(all_embeddings, axis=0)
-        return embeddings
+    return embeddings
     except Exception as e:
         print(f"Error computing embeddings: {e}")
         raise
@@ -216,18 +216,18 @@ def evaluate_top_k_accuracy(test_df, target_df, model, k_values=[1, 3, 5], batch
         top_k_indices = np.argsort(similarities, axis=1)[:, -k:]
         
         # Check if correct target is in top k
-        correct = 0
+    correct = 0
         for i, target_loinc in enumerate(target_loincs):
             # Get the target LOINC's index
             if target_loinc in loinc_to_index:
                 target_idx = loinc_to_index[target_loinc]
                 # Check if target index is in top k
                 if target_idx in top_k_indices[i]:
-                    correct += 1
+            correct += 1
             else:
                 print(f"WARNING: Target LOINC {target_loinc} not in target pool")
-        
-        # Calculate accuracy
+    
+    # Calculate accuracy
         accuracy = correct / len(source_texts)
         results[f'top{k}_accuracy'] = accuracy
         print(f"Top-{k} accuracy: {accuracy:.4f} ({correct}/{len(source_texts)})")
