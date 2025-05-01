@@ -171,6 +171,49 @@ The model is evaluated using the following metrics:
 - Mean Reciprocal Rank (MRR)
 - Error category distribution
 
+## Extensions
+
+### Hybrid Feature Integration for Qualitative vs Quantitative
+
+This extension addresses a key limitation in the original model: the difficulty in distinguishing between qualitative and quantitative LOINC codes with similar descriptions (e.g., "Erythrocytes [#/volume] (Qn)" vs "Erythrocytes [Presence] (Ql)").
+
+#### Implementation
+
+1. **Feature Integration**: 
+   - Uses the LOINC `SCALE_TYP` dimension (values: `Nom`, `Ord`, `Ql`, `Qn`, `Cnt`, etc.) to encode the qualitative/quantitative distinction
+   - Appends a sentinel token to both source and target strings: `full_text = raw_text + " ##scale=" + scale_typ.lower() + "##"`
+   - For sources without explicit scale information, uses the token `##scale=unk##`
+
+2. **Training Pipeline Modifications**:
+   - Updated data preprocessing to include `SCALE_TYP` information
+   - Modified augmentation to preserve scale tokens
+   - Updated triplet mining to use scale information
+
+3. **Evaluation Methodology**:
+   - Added stratified evaluation by `SCALE_TYP`
+   - Implemented comparison of scale-confusable pairs
+   - Included ablation with `##scale=unk##` to confirm the gain comes from the scale signal
+
+#### Running the Extension
+
+To test the hybrid feature integration:
+
+```bash
+./run_scale_integration.sh
+```
+
+This will:
+1. Process LOINC data with scale information
+2. Run evaluation using the scale-aware model
+3. Generate a detailed report comparing performance with and without scale information
+4. Save results in the `results/scale_integration` directory
+
+#### Expected Impact
+
+- Higher precision on scale-confusable pairs (~9% of mapping errors)
+- Minimal compute overhead (uses the same model architecture)
+- No schema changes to downstream retrieval
+
 ## References
 
 - Original paper: "Automated LOINC Standardization Using Pre-trained Large Language Models" 

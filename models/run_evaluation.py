@@ -28,6 +28,10 @@ def main():
                         help='Specific fold to evaluate (if not specified, evaluate all folds)')
     parser.add_argument('--skip_augmented_test', action='store_true',
                         help='Skip evaluation on augmented test data')
+    parser.add_argument('--max_samples', type=int, default=None,
+                        help='Maximum number of samples to evaluate (for debugging or performance issues)')
+    parser.add_argument('--timeout', type=int, default=600,
+                        help='Timeout in seconds for individual evaluation runs')
     args = parser.parse_args()
 
     # Create output directory
@@ -81,6 +85,24 @@ def main():
     # Run evaluation for each fold
     all_results = []
     
+    # Function to run evaluation with timeout
+    def run_eval_with_timeout(cmd, result_file, timeout=args.timeout):
+        try:
+            subprocess.run(cmd, check=True, timeout=timeout)
+            
+            # Check if result file was generated
+            if os.path.exists(result_file):
+                return True
+            else:
+                print(f"Evaluation completed but result file {result_file} was not generated")
+                return False
+        except subprocess.TimeoutExpired:
+            print(f"Evaluation timed out after {timeout} seconds")
+            return False
+        except subprocess.CalledProcessError as e:
+            print(f"Evaluation failed with error: {e}")
+            return False
+    
     print("\n=== EVALUATING ON STANDARD TARGET POOL ===")
     for fold in folds:
         cmd = [
@@ -92,13 +114,18 @@ def main():
             '--fold', str(fold)
         ]
         
+        # Add max_samples if specified
+        if args.max_samples:
+            cmd.extend(['--max_samples', str(args.max_samples)])
+        
         print(f"\nRunning evaluation for fold {fold}...")
         print(f"Command: {' '.join(cmd)}")
-        subprocess.run(cmd, check=True)
         
-        # Read and save results
         result_file = os.path.join(args.output_dir, f'fold{fold}_results.csv')
-        if os.path.exists(result_file):
+        success = run_eval_with_timeout(cmd, result_file)
+        
+        # Read and save results if successful
+        if success and os.path.exists(result_file):
             results = pd.read_csv(result_file)
             results['fold'] = fold
             results['target_pool'] = 'standard'
@@ -119,13 +146,18 @@ def main():
                 '--expanded_pool'
             ]
             
+            # Add max_samples if specified
+            if args.max_samples:
+                cmd.extend(['--max_samples', str(args.max_samples)])
+            
             print(f"\nRunning evaluation for fold {fold} with expanded target pool...")
             print(f"Command: {' '.join(cmd)}")
-            subprocess.run(cmd, check=True)
             
-            # Read and save results
             result_file = os.path.join(args.output_dir, f'fold{fold}_expanded_results.csv')
-            if os.path.exists(result_file):
+            success = run_eval_with_timeout(cmd, result_file)
+            
+            # Read and save results if successful
+            if success and os.path.exists(result_file):
                 results = pd.read_csv(result_file)
                 results['fold'] = fold
                 results['target_pool'] = 'expanded'
@@ -146,13 +178,18 @@ def main():
                 '--augmented_test'
             ]
             
+            # Add max_samples if specified
+            if args.max_samples:
+                cmd.extend(['--max_samples', str(args.max_samples)])
+            
             print(f"\nRunning evaluation for fold {fold} with augmented test data...")
             print(f"Command: {' '.join(cmd)}")
-            subprocess.run(cmd, check=True)
             
-            # Read and save results
             result_file = os.path.join(args.output_dir, f'fold{fold}_augmented_results.csv')
-            if os.path.exists(result_file):
+            success = run_eval_with_timeout(cmd, result_file)
+            
+            # Read and save results if successful
+            if success and os.path.exists(result_file):
                 results = pd.read_csv(result_file)
                 results['fold'] = fold
                 results['target_pool'] = 'standard'
@@ -174,13 +211,18 @@ def main():
                     '--augmented_test'
                 ]
                 
+                # Add max_samples if specified
+                if args.max_samples:
+                    cmd.extend(['--max_samples', str(args.max_samples)])
+                
                 print(f"\nRunning evaluation for fold {fold} with augmented test data and expanded target pool...")
                 print(f"Command: {' '.join(cmd)}")
-                subprocess.run(cmd, check=True)
                 
-                # Read and save results
                 result_file = os.path.join(args.output_dir, f'fold{fold}_augmented_expanded_results.csv')
-                if os.path.exists(result_file):
+                success = run_eval_with_timeout(cmd, result_file)
+                
+                # Read and save results if successful
+                if success and os.path.exists(result_file):
                     results = pd.read_csv(result_file)
                     results['fold'] = fold
                     results['target_pool'] = 'expanded'

@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import random
 
-def generate_stage1_triplets(loinc_texts, loinc_codes, num_triplets=10000):
+def generate_stage1_triplets(loinc_texts, loinc_codes, num_triplets=10000, loinc_scales=None):
     """
     Generate triplets for Stage 1 fine-tuning (target-only).
     
@@ -15,6 +15,7 @@ def generate_stage1_triplets(loinc_texts, loinc_codes, num_triplets=10000):
         loinc_texts: List of text representations
         loinc_codes: List of corresponding LOINC codes
         num_triplets: Number of triplets to generate
+        loinc_scales: List of scale types (optional)
         
     Returns:
         List of triplets (anchor, positive, negative)
@@ -22,6 +23,11 @@ def generate_stage1_triplets(loinc_texts, loinc_codes, num_triplets=10000):
     # Convert to numpy arrays for easier manipulation
     loinc_texts = np.array(loinc_texts)
     loinc_codes = np.array(loinc_codes)
+    
+    # Handle scale information if provided
+    has_scales = loinc_scales is not None
+    if has_scales:
+        loinc_scales = np.array(loinc_scales)
     
     # Get unique LOINC codes
     unique_codes = np.unique(loinc_codes)
@@ -39,6 +45,13 @@ def generate_stage1_triplets(loinc_texts, loinc_codes, num_triplets=10000):
     if len(valid_codes) == 0:
         raise ValueError("No LOINC codes with multiple text representations found")
     
+    # Import append_scale_token for appending scale sentinel token to text
+    # This import is placed here to avoid circular imports
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from data_augmentation import append_scale_token
+    
     for _ in range(num_triplets):
         # Select a random LOINC code with multiple representations
         anchor_code = random.choice(valid_codes)
@@ -53,15 +66,30 @@ def generate_stage1_triplets(loinc_texts, loinc_codes, num_triplets=10000):
         negative_code = random.choice([c for c in unique_codes if c != anchor_code])
         negative_idx = random.choice(code_to_indices[negative_code])
         
+        # Get texts
+        anchor_text = loinc_texts[anchor_idx]
+        positive_text = loinc_texts[positive_idx]
+        negative_text = loinc_texts[negative_idx]
+        
+        # Append scale sentinel tokens if scale information is provided
+        if has_scales:
+            anchor_scale = loinc_scales[anchor_idx]
+            positive_scale = loinc_scales[positive_idx]
+            negative_scale = loinc_scales[negative_idx]
+            
+            anchor_text = append_scale_token(anchor_text, anchor_scale)
+            positive_text = append_scale_token(positive_text, positive_scale)
+            negative_text = append_scale_token(negative_text, negative_scale)
+        
         triplets.append((
-            loinc_texts[anchor_idx],
-            loinc_texts[positive_idx],
-            loinc_texts[negative_idx]
+            anchor_text,
+            positive_text,
+            negative_text
         ))
     
     return triplets
 
-def generate_stage2_triplets(source_texts, target_codes, num_triplets=5000):
+def generate_stage2_triplets(source_texts, target_codes, num_triplets=5000, source_scales=None, target_scales=None):
     """
     Generate triplets for Stage 2 fine-tuning (source-target pairs).
     
@@ -74,6 +102,8 @@ def generate_stage2_triplets(source_texts, target_codes, num_triplets=5000):
         source_texts: List of source text descriptions
         target_codes: List of corresponding target LOINC codes
         num_triplets: Number of triplets to generate
+        source_scales: List of scale types for source texts (optional)
+        target_scales: Dictionary mapping target codes to scale types (optional)
         
     Returns:
         List of triplets (anchor, positive, negative)
@@ -82,6 +112,11 @@ def generate_stage2_triplets(source_texts, target_codes, num_triplets=5000):
     source_texts = np.array(source_texts)
     target_codes = np.array(target_codes)
     
+    # Handle scale information if provided
+    has_source_scales = source_scales is not None
+    if has_source_scales:
+        source_scales = np.array(source_scales)
+        
     # Get unique target codes
     unique_codes = np.unique(target_codes)
     
@@ -100,6 +135,13 @@ def generate_stage2_triplets(source_texts, target_codes, num_triplets=5000):
         print("Using data augmentation to create variations.")
         # Fall back to using all codes, assuming data augmentation created variations
         valid_codes = unique_codes
+    
+    # Import append_scale_token for appending scale sentinel token to text
+    # This import is placed here to avoid circular imports
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from data_augmentation import append_scale_token
     
     for _ in range(num_triplets):
         # Select a random target code with multiple sources
@@ -120,10 +162,35 @@ def generate_stage2_triplets(source_texts, target_codes, num_triplets=5000):
         negative_code = random.choice([c for c in unique_codes if c != anchor_code])
         negative_idx = random.choice(code_to_indices[negative_code])
         
+        # Get texts
+        anchor_text = source_texts[anchor_idx]
+        positive_text = source_texts[positive_idx]
+        negative_text = source_texts[negative_idx]
+        
+        # Append scale sentinel tokens if scale information is provided
+        if has_source_scales:
+            anchor_scale = source_scales[anchor_idx]
+            positive_scale = source_scales[positive_idx]
+            negative_scale = source_scales[negative_idx]
+            
+            anchor_text = append_scale_token(anchor_text, anchor_scale)
+            positive_text = append_scale_token(positive_text, positive_scale)
+            negative_text = append_scale_token(negative_text, negative_scale)
+        elif target_scales is not None:
+            # If we have target scales dictionary but not source scales,
+            # use the target scale for the corresponding LOINC code
+            anchor_scale = target_scales.get(anchor_code, 'unk')
+            positive_scale = target_scales.get(anchor_code, 'unk')  # Same code as anchor
+            negative_scale = target_scales.get(negative_code, 'unk')
+            
+            anchor_text = append_scale_token(anchor_text, anchor_scale)
+            positive_text = append_scale_token(positive_text, positive_scale)
+            negative_text = append_scale_token(negative_text, negative_scale)
+        
         triplets.append((
-            source_texts[anchor_idx],
-            source_texts[positive_idx],
-            source_texts[negative_idx]
+            anchor_text,
+            positive_text,
+            negative_text
         ))
     
     return triplets

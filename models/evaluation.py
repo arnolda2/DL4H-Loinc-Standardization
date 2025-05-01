@@ -138,7 +138,7 @@ def compute_embeddings(texts, model, batch_size=16):
         raise
 
 def evaluate_top_k_accuracy(test_df, target_df, model, k_values=[1, 3, 5], batch_size=16, 
-                           augmented_test=False, use_only_original=False):
+                           augmented_test=False, use_only_original=False, max_samples=None):
     """
     Evaluate Top-k accuracy
     
@@ -150,6 +150,7 @@ def evaluate_top_k_accuracy(test_df, target_df, model, k_values=[1, 3, 5], batch
         batch_size: Batch size for inference
         augmented_test: Whether this is augmented test data
         use_only_original: If True, only use original samples from augmented test data
+        max_samples: Maximum number of samples to use for evaluation (for debugging/performance)
         
     Returns:
         results: Dictionary with Top-k accuracy results
@@ -158,6 +159,11 @@ def evaluate_top_k_accuracy(test_df, target_df, model, k_values=[1, 3, 5], batch
     if augmented_test and use_only_original and 'is_augmented' in test_df.columns:
         print("Using only original samples from augmented test data")
         test_df = test_df[~test_df['is_augmented']]
+    
+    # Limit number of samples if specified
+    if max_samples is not None and max_samples > 0 and max_samples < len(test_df):
+        print(f"Limiting evaluation to {max_samples} samples (out of {len(test_df)} total)")
+        test_df = test_df.sample(max_samples, random_state=42)
     
     # Get unique target LOINCs
     unique_target_loincs = target_df['LOINC_NUM'].unique()
@@ -246,37 +252,324 @@ def evaluate_top_k_accuracy(test_df, target_df, model, k_values=[1, 3, 5], batch
     
     return results
 
+def evaluate_stratified_by_scale(test_df, target_df, model, k_values=[1, 3, 5], batch_size=16, loinc_df=None):
+    """
+    Evaluate Top-k accuracy stratified by SCALE_TYP
+    
+    Args:
+        test_df: DataFrame with test data
+        target_df: DataFrame with LOINC targets
+        model: Trained model
+        k_values: List of k values for Top-k accuracy
+        batch_size: Batch size for inference
+        loinc_df: DataFrame containing LOINC data with scale information
+        
+    Returns:
+        results: Dictionary with Top-k accuracy results stratified by scale type
+    """
+    if loinc_df is None or 'SCALE_TYP' not in loinc_df.columns:
+        print("SCALE_TYP information not available in LOINC data, cannot stratify by scale")
+        return None
+    
+    # Create mapping from LOINC code to scale type
+    loinc_to_scale = {}
+    for _, row in loinc_df.iterrows():
+        if pd.notna(row['LOINC_NUM']) and pd.notna(row['SCALE_TYP']):
+            loinc_to_scale[row['LOINC_NUM']] = row['SCALE_TYP']
+    
+    # Add scale type to test_df
+    test_df = test_df.copy()
+    test_df['SCALE_TYP'] = test_df['LOINC_NUM'].map(loinc_to_scale)
+    
+    # Fill missing scale types with unknown
+    test_df['SCALE_TYP'] = test_df['SCALE_TYP'].fillna('unknown')
+    
+    # Get unique scale types
+    scale_types = test_df['SCALE_TYP'].unique()
+    print(f"Found {len(scale_types)} unique scale types: {scale_types}")
+    
+    # Get unique target LOINCs
+    unique_target_loincs = target_df['LOINC_NUM'].unique()
+    
+    # Compute embeddings for target LOINCs
+    print("Computing embeddings for target LOINCs...")
+    target_texts = []
+    target_loincs = []
+    
+    for loinc in tqdm(unique_target_loincs):
+        # Use first matching text if multiple exist for the same LOINC code
+        matching_rows = target_df[target_df['LOINC_NUM'] == loinc]
+        target_text = matching_rows.iloc[0]['TARGET']
+        
+        # Get scale type
+        scale_type = loinc_to_scale.get(loinc, 'unknown')
+        
+        # Append scale sentinel token
+        if 'append_scale_token' in globals():
+            target_text = append_scale_token(target_text, scale_type)
+        else:
+            # Import from parent directory if not already available
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from data_augmentation import append_scale_token
+            target_text = append_scale_token(target_text, scale_type)
+        
+        target_texts.append(target_text)
+        target_loincs.append(loinc)
+    
+    target_embeddings = compute_embeddings(target_texts, model, batch_size)
+    
+    # Create dictionary mapping LOINC codes to their indices in the target embeddings
+    loinc_to_index = {loinc: i for i, loinc in enumerate(target_loincs)}
+    
+    # Dictionary to store results by scale type
+    results_by_scale = {}
+    
+    for scale_type in scale_types:
+        print(f"\nEvaluating SCALE_TYP: {scale_type}")
+        
+        # Filter test data by scale type
+        scale_test_df = test_df[test_df['SCALE_TYP'] == scale_type]
+        print(f"Found {len(scale_test_df)} test samples with SCALE_TYP = {scale_type}")
+        
+        if len(scale_test_df) == 0:
+            continue
+        
+        # Get source texts and target LOINCs for this scale type
+        source_texts = scale_test_df['SOURCE'].tolist()
+        target_loincs = scale_test_df['LOINC_NUM'].tolist()
+        
+        # Add scale sentinel token to source texts
+        source_texts_with_scale = []
+        for text in source_texts:
+            # Convert to string if needed
+            text = str(text) if not isinstance(text, str) else text
+            
+            # First try with known scale
+            source_text = append_scale_token(text.lower(), scale_type)
+            source_texts_with_scale.append(source_text)
+        
+        # Compute embeddings for source texts
+        source_embeddings = compute_embeddings(source_texts_with_scale, model, batch_size)
+        
+        # Calculate pairwise distances
+        # Use negative cosine distance (higher is more similar)
+        similarities = -pairwise_distances(source_embeddings, target_embeddings, metric='cosine')
+        
+        # Evaluate Top-k accuracy
+        top_k_results = {}
+        for k in k_values:
+            correct = 0
+            for i, loinc in enumerate(target_loincs):
+                # Get top-k predictions
+                top_k_indices = np.argsort(similarities[i])[::-1][:k]
+                top_k_loincs = [target_loincs[idx] for idx in top_k_indices]
+                
+                # Check if true LOINC is in top-k predictions
+                if loinc in top_k_loincs:
+                    correct += 1
+            
+            accuracy = correct / len(target_loincs) if len(target_loincs) > 0 else 0
+            top_k_results[f'top_{k}_accuracy'] = accuracy
+            print(f"Top-{k} accuracy: {accuracy:.4f}")
+        
+        # Store results for this scale type
+        results_by_scale[scale_type] = top_k_results
+    
+    # Also run evaluation with scale token set to 'unk'
+    print("\nEvaluating with scale token set to 'unk' (ablation)")
+    
+    # Add 'unk' scale token to source texts
+    source_texts = test_df['SOURCE'].tolist()
+    source_texts_with_unk = []
+    for text in source_texts:
+        # Convert to string if needed
+        text = str(text) if not isinstance(text, str) else text
+        
+        # Use 'unk' scale
+        source_text = append_scale_token(text.lower(), 'unk')
+        source_texts_with_unk.append(source_text)
+    
+    # Get target LOINCs from test data
+    target_loincs_test = test_df['LOINC_NUM'].tolist()
+    
+    # Compute embeddings for source texts with 'unk' scale
+    source_embeddings_unk = compute_embeddings(source_texts_with_unk, model, batch_size)
+    
+    # Calculate pairwise distances
+    # Use negative cosine distance (higher is more similar)
+    similarities_unk = -pairwise_distances(source_embeddings_unk, target_embeddings, metric='cosine')
+    
+    # Evaluate Top-k accuracy for 'unk' scale
+    top_k_results_unk = {}
+    for k in k_values:
+        correct = 0
+        for i, loinc in enumerate(target_loincs_test):
+            # Get top-k predictions
+            top_k_indices = np.argsort(similarities_unk[i])[::-1][:k]
+            top_k_loincs = [target_loincs[idx] for idx in top_k_indices]
+            
+            # Check if true LOINC is in top-k predictions
+            if loinc in top_k_loincs:
+                correct += 1
+        
+        accuracy = correct / len(target_loincs_test) if len(target_loincs_test) > 0 else 0
+        top_k_results_unk[f'top_{k}_accuracy'] = accuracy
+        print(f"Top-{k} accuracy with 'unk' scale: {accuracy:.4f}")
+    
+    # Store results for 'unk' scale
+    results_by_scale['unk'] = top_k_results_unk
+    
+    # Also compare scale-sensitive pairs (e.g., Qn vs Ql)
+    print("\nEvaluating scale-confusable pairs")
+    
+    # Find pairs of test samples with same COMPONENT but different SCALE_TYP
+    if 'COMPONENT' in loinc_df.columns:
+        # Create mapping from LOINC code to component
+        loinc_to_component = {}
+        for _, row in loinc_df.iterrows():
+            if pd.notna(row['LOINC_NUM']) and pd.notna(row['COMPONENT']):
+                loinc_to_component[row['LOINC_NUM']] = row['COMPONENT']
+        
+        # Add component to test_df
+        test_df['COMPONENT'] = test_df['LOINC_NUM'].map(loinc_to_component)
+        
+        # Group by component and find components with multiple scale types
+        components_with_multiple_scales = []
+        for component, group in test_df.groupby('COMPONENT'):
+            if len(group['SCALE_TYP'].unique()) > 1:
+                components_with_multiple_scales.append(component)
+        
+        print(f"Found {len(components_with_multiple_scales)} components with multiple scale types")
+        
+        if len(components_with_multiple_scales) > 0:
+            # Filter test data to include only components with multiple scale types
+            confusable_test_df = test_df[test_df['COMPONENT'].isin(components_with_multiple_scales)]
+            print(f"Found {len(confusable_test_df)} confusable test samples")
+            
+            # Get source texts and target LOINCs for confusable pairs
+            confusable_source_texts = confusable_test_df['SOURCE'].tolist()
+            confusable_target_loincs = confusable_test_df['LOINC_NUM'].tolist()
+            confusable_scales = confusable_test_df['SCALE_TYP'].tolist()
+            
+            # Evaluate with correct scale token
+            confusable_source_texts_with_scale = []
+            for text, scale_type in zip(confusable_source_texts, confusable_scales):
+                # Convert to string if needed
+                text = str(text) if not isinstance(text, str) else text
+                
+                # Use correct scale
+                source_text = append_scale_token(text.lower(), scale_type)
+                confusable_source_texts_with_scale.append(source_text)
+            
+            # Compute embeddings for confusable source texts with correct scale
+            confusable_source_embeddings = compute_embeddings(confusable_source_texts_with_scale, model, batch_size)
+            
+            # Calculate pairwise distances
+            confusable_similarities = -pairwise_distances(confusable_source_embeddings, target_embeddings, metric='cosine')
+            
+            # Evaluate Top-k accuracy for confusable pairs with correct scale
+            confusable_results = {}
+            for k in k_values:
+                correct = 0
+                for i, loinc in enumerate(confusable_target_loincs):
+                    # Get top-k predictions
+                    top_k_indices = np.argsort(confusable_similarities[i])[::-1][:k]
+                    top_k_loincs = [target_loincs[idx] for idx in top_k_indices]
+                    
+                    # Check if true LOINC is in top-k predictions
+                    if loinc in top_k_loincs:
+                        correct += 1
+                
+                accuracy = correct / len(confusable_target_loincs) if len(confusable_target_loincs) > 0 else 0
+                confusable_results[f'top_{k}_accuracy'] = accuracy
+                print(f"Top-{k} accuracy for confusable pairs with correct scale: {accuracy:.4f}")
+            
+            # Store results for confusable pairs with correct scale
+            results_by_scale['confusable_with_scale'] = confusable_results
+            
+            # Evaluate with 'unk' scale token
+            confusable_source_texts_with_unk = []
+            for text in confusable_source_texts:
+                # Convert to string if needed
+                text = str(text) if not isinstance(text, str) else text
+                
+                # Use 'unk' scale
+                source_text = append_scale_token(text.lower(), 'unk')
+                confusable_source_texts_with_unk.append(source_text)
+            
+            # Compute embeddings for confusable source texts with 'unk' scale
+            confusable_source_embeddings_unk = compute_embeddings(confusable_source_texts_with_unk, model, batch_size)
+            
+            # Calculate pairwise distances
+            confusable_similarities_unk = -pairwise_distances(confusable_source_embeddings_unk, target_embeddings, metric='cosine')
+            
+            # Evaluate Top-k accuracy for confusable pairs with 'unk' scale
+            confusable_results_unk = {}
+            for k in k_values:
+                correct = 0
+                for i, loinc in enumerate(confusable_target_loincs):
+                    # Get top-k predictions
+                    top_k_indices = np.argsort(confusable_similarities_unk[i])[::-1][:k]
+                    top_k_loincs = [target_loincs[idx] for idx in top_k_indices]
+                    
+                    # Check if true LOINC is in top-k predictions
+                    if loinc in top_k_loincs:
+                        correct += 1
+                
+                accuracy = correct / len(confusable_target_loincs) if len(confusable_target_loincs) > 0 else 0
+                confusable_results_unk[f'top_{k}_accuracy'] = accuracy
+                print(f"Top-{k} accuracy for confusable pairs with 'unk' scale: {accuracy:.4f}")
+            
+            # Store results for confusable pairs with 'unk' scale
+            results_by_scale['confusable_with_unk'] = confusable_results_unk
+            
+            # Manual inspection of 10 high-risk assays if available
+            high_risk_assays = ['blood culture', 'drug screen', 'hormone']
+            high_risk_test_df = test_df[test_df['SOURCE'].str.lower().str.contains('|'.join(high_risk_assays), na=False)]
+            
+            if len(high_risk_test_df) > 0:
+                print(f"\nFound {len(high_risk_test_df)} high-risk assay samples for manual inspection")
+                high_risk_sample = high_risk_test_df.sample(min(10, len(high_risk_test_df)))
+                
+                print("\nSample of 10 high-risk assays for manual inspection:")
+                for _, row in high_risk_sample.iterrows():
+                    loinc_code = row['LOINC_NUM']
+                    source_text = row['SOURCE']
+                    scale_type = row['SCALE_TYP']
+                    component = row.get('COMPONENT', 'N/A')
+                    
+                    print(f"LOINC: {loinc_code}, Scale: {scale_type}, Component: {component}")
+                    print(f"Source: {source_text}")
+                    print("-" * 80)
+    
+    return results_by_scale
+
 def main():
     parser = argparse.ArgumentParser(description='Evaluate LOINC standardization model')
     parser.add_argument('--test_file', type=str, required=True, 
                         help='Path to test data CSV')
     parser.add_argument('--loinc_file', type=str, required=True, 
                         help='Path to LOINC data CSV')
-    parser.add_argument('--checkpoint_dir', type=str, required=True, 
+    parser.add_argument('--checkpoint_dir', type=str, default='models/checkpoints', 
                         help='Directory containing model checkpoints')
     parser.add_argument('--fold', type=int, default=0, 
                         help='Fold to evaluate (0-indexed)')
     parser.add_argument('--output_dir', type=str, default='results', 
-                        help='Directory to save results')
-    parser.add_argument('--k_values', type=int, nargs='+', default=[1, 3, 5, 10], 
-                        help='k values for Top-k accuracy')
+                        help='Directory to save evaluation results')
     parser.add_argument('--batch_size', type=int, default=16, 
                         help='Batch size for inference')
-    parser.add_argument('--expanded_pool', action='store_true',
-                        help='Whether to use expanded target pool')
-    parser.add_argument('--augmented_test', action='store_true',
-                        help='Whether this is augmented test data')
-    parser.add_argument('--original_only', action='store_true',
-                        help='Only use original samples from augmented test data')
-    parser.add_argument('--ablation_id', type=str, default=None,
-                        help='Identifier for ablation study (used for output filename)')
+    parser.add_argument('--expanded_pool', action='store_true', 
+                        help='Using expanded target pool')
+    parser.add_argument('--augmented_test', action='store_true', 
+                        help='Using augmented test data')
+    parser.add_argument('--ablation_id', type=str, default=None, 
+                        help='Ablation study identifier')
+    parser.add_argument('--max_samples', type=int, default=None,
+                        help='Maximum number of samples to evaluate (for debugging or performance issues)')
     args = parser.parse_args()
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Start time
-    start_time = time.time()
     
     # Load data
     print(f"Loading test data from {args.test_file}...")
@@ -287,18 +580,46 @@ def main():
     
     # Load model
     print(f"Loading model for fold {args.fold}...")
-    model = load_model(args.checkpoint_dir, args.fold)
+    try:
+        model = load_model(args.checkpoint_dir, args.fold)
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        print("WARNING: Using default model for evaluation")
+        # Use fold 0 as fallback if fold not found
+        try:
+            model = load_model(args.checkpoint_dir, 0)
+        except Exception as e:
+            print(f"Error loading fallback model: {e}")
+            return
     
-    # Evaluate
+    # Evaluate model
     print("Evaluating model...")
+    start_time = time.time()
+    
+    # Create a file prefix for the results
+    if args.expanded_pool:
+        if args.augmented_test:
+            file_prefix = f"fold{args.fold}_augmented_expanded"
+        else:
+            file_prefix = f"fold{args.fold}_expanded"
+    else:
+        if args.augmented_test:
+            file_prefix = f"fold{args.fold}_augmented"
+        else:
+            file_prefix = f"fold{args.fold}"
+    
+    # Add ablation identifier if provided
+    if args.ablation_id:
+        file_prefix = f"{file_prefix}_ablation_{args.ablation_id}"
+    
+    # Run evaluation
     results = evaluate_top_k_accuracy(
         test_df=test_df,
         target_df=target_df,
         model=model,
-        k_values=args.k_values,
         batch_size=args.batch_size,
         augmented_test=args.augmented_test,
-        use_only_original=args.original_only
+        max_samples=args.max_samples
     )
     
     # Add fold information to results
@@ -308,15 +629,8 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     
     # Create output filename
-    file_name_parts = [f'fold{args.fold}']
-    if args.augmented_test:
-        file_name_parts.append('augmented')
-    if args.expanded_pool:
-        file_name_parts.append('expanded')
-    if args.ablation_id:
-        file_name_parts.append(f'ablation_{args.ablation_id}')
-    file_name_parts.append('results.csv')
-    results_file = os.path.join(args.output_dir, '_'.join(file_name_parts))
+    file_name_parts = [file_prefix]
+    results_file = os.path.join(args.output_dir, '_'.join(file_name_parts) + '.csv')
     
     # Save results
     pd.DataFrame([results]).to_csv(results_file, index=False)

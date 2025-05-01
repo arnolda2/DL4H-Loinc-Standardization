@@ -27,8 +27,8 @@ def process_loinc_data():
     loinc_targets_df = loinc_df[loinc_df['LOINC_NUM'].isin(sampled_loinc_codes)]
     print(f"Sampled LOINC dataframe shape: {loinc_targets_df.shape}")
     
-    # Select the specified columns from the paper
-    columns_to_keep = ['LOINC_NUM', 'LONG_COMMON_NAME', 'SHORTNAME', 'DisplayName', 'RELATEDNAMES2']
+    # Select the specified columns from the paper, now including SCALE_TYP
+    columns_to_keep = ['LOINC_NUM', 'LONG_COMMON_NAME', 'SHORTNAME', 'DisplayName', 'RELATEDNAMES2', 'SCALE_TYP']
     loinc_targets_df = loinc_targets_df[columns_to_keep]
     
     # Handle missing/NaN values in the text columns (replace with empty strings)

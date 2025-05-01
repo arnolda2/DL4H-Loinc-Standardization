@@ -23,6 +23,9 @@ from tqdm import tqdm
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Import from evaluation.py
+from models.evaluation import load_test_data, load_target_loincs, load_model, compute_embeddings
+
 def run_component_evaluation(component, value, test_file, loinc_file, checkpoint_dir, output_dir, fold=0, expanded_pool=False, augmented_test=False):
     """
     Run evaluation with specific component configuration
@@ -496,107 +499,564 @@ def save_ablation_summary(all_results, output_dir):
     print(f"Saved ablation study summary to {summary_file}")
 
 def main():
-    parser = argparse.ArgumentParser(description='Ablation studies for LOINC standardization model')
-    parser.add_argument('--test_file', type=str, default='output/mimic_pairs_processed.csv', 
+    parser = argparse.ArgumentParser(description='Run ablation studies for LOINC standardization model')
+    parser.add_argument('--test_file', type=str, required=True, 
                         help='Path to test data CSV')
-    parser.add_argument('--augmented_test_file', type=str, default='output/mimic_pairs_augmented.csv',
-                       help='Path to augmented test data CSV')
-    parser.add_argument('--loinc_file', type=str, default='output/loinc_full_processed.csv', 
+    parser.add_argument('--loinc_file', type=str, required=True, 
                         help='Path to LOINC data CSV')
-    parser.add_argument('--expanded_pool', type=str, default='output/expanded_target_pool.csv',
-                        help='Path to expanded target pool CSV')
-    parser.add_argument('--checkpoint_dir', type=str, default='models/checkpoints', 
+    parser.add_argument('--checkpoint_dir', type=str, required=True, 
                         help='Directory containing model checkpoints')
-    parser.add_argument('--output_dir', type=str, default='results/ablation_study', 
+    parser.add_argument('--output_dir', type=str, default='results/ablation', 
                         help='Directory to save ablation study results')
     parser.add_argument('--fold', type=int, default=0, 
-                        help='Fold to analyze')
-    parser.add_argument('--skip_augmented_test', action='store_true',
-                        help='Skip evaluation on augmented test data')
-    parser.add_argument('--components', type=str, nargs='+', 
-                        default=['fine_tuning_stages', 'mining_strategy', 'data_augmentation', 'model_size'],
-                        help='Components to include in ablation study')
+                        help='Fold to use for ablation studies (0-indexed)')
+    parser.add_argument('--batch_size', type=int, default=16, 
+                        help='Batch size for inference')
+    parser.add_argument('--max_samples', type=int, default=None,
+                        help='Maximum number of samples to evaluate (for debugging or performance issues)')
+    parser.add_argument('--skip_fine_tuning', action='store_true',
+                        help='Skip fine-tuning stages ablation')
+    parser.add_argument('--skip_mining', action='store_true',
+                        help='Skip mining strategies ablation')
+    parser.add_argument('--skip_augmentation', action='store_true',
+                        help='Skip data augmentation ablation')
+    parser.add_argument('--skip_model_size', action='store_true',
+                        help='Skip model size ablation')
     args = parser.parse_args()
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Check if files exist
-    if not os.path.exists(args.test_file):
-        print(f"Test file not found: {args.test_file}")
-        return
+    # Load data
+    print("Loading test data...")
+    test_df = load_test_data(args.test_file)
     
-    # Determine which target pool to use
-    use_expanded_pool = os.path.exists(args.expanded_pool)
-    if not use_expanded_pool:
-        print(f"Expanded target pool not found: {args.expanded_pool}")
-        print("Will only evaluate on standard target pool.")
+    print("Loading LOINC targets...")
+    loinc_df = load_target_loincs(args.loinc_file)
     
-    # Determine which test data to use
-    use_augmented_test = not args.skip_augmented_test and os.path.exists(args.augmented_test_file)
-    if not use_augmented_test and not args.skip_augmented_test:
-        print(f"Augmented test file not found: {args.augmented_test_file}")
-        print("Will only evaluate on standard test data.")
+    # Create augmented test data for testing
+    augmented_test_df = test_df.copy()
+    if 'is_augmented' not in augmented_test_df.columns:
+        augmented_test_df['is_augmented'] = False
     
-    # Store all results
-    all_results = {}
+    # Limit samples if specified
+    if args.max_samples is not None and args.max_samples > 0 and args.max_samples < len(test_df):
+        print(f"Limiting evaluation to {args.max_samples} samples (out of {len(test_df)} total)")
+        test_df = test_df.sample(args.max_samples, random_state=42)
+        augmented_test_df = augmented_test_df.sample(args.max_samples, random_state=42)
     
-    # Run fine-tuning stages ablation (if requested)
-    if 'fine_tuning_stages' in args.components:
-        results = test_fine_tuning_stages(
-            args.test_file, args.loinc_file, args.checkpoint_dir, args.output_dir, 
-            args.fold, use_expanded_pool, False  # No augmented test for this
+    # Fine-tuning stages ablation
+    if not args.skip_fine_tuning:
+        print("\n=== ABLATION STUDY: FINE-TUNING STAGES ===")
+        ablation_fine_tuning_stages(
+            test_df=test_df, 
+            loinc_df=loinc_df, 
+            checkpoint_dir=args.checkpoint_dir, 
+            output_dir=args.output_dir, 
+            fold=args.fold, 
+            batch_size=args.batch_size,
+            max_samples=args.max_samples
         )
-        all_results['fine_tuning_stages'] = results
     
-    # Run mining strategies ablation (if requested)
-    if 'mining_strategy' in args.components:
-        results = test_mining_strategies(
-            args.test_file, args.loinc_file, args.checkpoint_dir, args.output_dir, 
-            args.fold, use_expanded_pool, False  # No augmented test for this
+    # Mining strategies ablation
+    if not args.skip_mining:
+        print("\n=== ABLATION STUDY: MINING STRATEGIES ===")
+        ablation_mining_strategies(
+            test_df=test_df, 
+            loinc_df=loinc_df, 
+            checkpoint_dir=args.checkpoint_dir, 
+            output_dir=args.output_dir, 
+            fold=args.fold, 
+            batch_size=args.batch_size,
+            max_samples=args.max_samples
         )
-        all_results['mining_strategy'] = results
     
-    # Run data augmentation ablation (if requested)
-    if 'data_augmentation' in args.components:
-        # First with standard test data
-        results_standard = test_data_augmentation(
-            args.test_file, args.loinc_file, args.checkpoint_dir, args.output_dir, 
-            args.fold, use_expanded_pool, False
+    # Data augmentation ablation
+    if not args.skip_augmentation:
+        print("\n=== ABLATION STUDY: DATA AUGMENTATION ===")
+        ablation_data_augmentation(
+            test_df=test_df, 
+            loinc_df=loinc_df, 
+            checkpoint_dir=args.checkpoint_dir, 
+            output_dir=args.output_dir, 
+            fold=args.fold, 
+            batch_size=args.batch_size,
+            max_samples=args.max_samples
         )
-        all_results['data_augmentation_standard'] = results_standard
         
-        # Then with augmented test data (if available)
-        if use_augmented_test:
-            results_augmented = test_data_augmentation(
-                args.augmented_test_file, args.loinc_file, args.checkpoint_dir, args.output_dir, 
-                args.fold, use_expanded_pool, True
-            )
-            all_results['data_augmentation_augmented'] = results_augmented
-    
-    # Run model size ablation (if requested)
-    if 'model_size' in args.components:
-        results = test_model_size(
-            args.test_file, args.loinc_file, args.checkpoint_dir, args.output_dir, 
-            args.fold, use_expanded_pool, False
+        # Also evaluate on augmented test data
+        print("\n=== ABLATION STUDY: DATA AUGMENTATION ===")
+        ablation_data_augmentation(
+            test_df=augmented_test_df, 
+            loinc_df=loinc_df, 
+            checkpoint_dir=args.checkpoint_dir, 
+            output_dir=args.output_dir, 
+            fold=args.fold, 
+            batch_size=args.batch_size, 
+            augmented_test=True,
+            max_samples=args.max_samples
         )
-        all_results['model_size'] = results
     
-    # Save summary of all ablation studies
-    save_ablation_summary(all_results, args.output_dir)
+    # Model size ablation
+    if not args.skip_model_size:
+        print("\n=== ABLATION STUDY: MODEL SIZE ===")
+        ablation_model_size(
+            test_df=test_df, 
+            loinc_df=loinc_df, 
+            checkpoint_dir=args.checkpoint_dir, 
+            output_dir=args.output_dir, 
+            fold=args.fold, 
+            batch_size=args.batch_size,
+            max_samples=args.max_samples
+        )
     
-    # Save raw results
-    with open(os.path.join(args.output_dir, 'ablation_raw_results.json'), 'w') as f:
-        # Convert DataFrames to dictionaries for JSON serialization
-        serializable_results = {}
-        for component, results in all_results.items():
-            if results:
-                serializable_results[component] = {
-                    setting: df.to_dict() if isinstance(df, pd.DataFrame) else None
-                    for setting, df in results.items()
+    # Create summary file
+    summary_file = os.path.join(args.output_dir, 'ablation_study_summary.txt')
+    with open(summary_file, 'w') as f:
+        f.write("=== LOINC STANDARDIZATION MODEL ABLATION STUDY SUMMARY ===\n\n")
+        f.write(f"Test File: {args.test_file}\n")
+        f.write(f"LOINC File: {args.loinc_file}\n")
+        f.write(f"Fold: {args.fold}\n\n")
+        
+        if not args.skip_fine_tuning:
+            f.write("1. Fine-Tuning Stages Ablation\n")
+            f.write("-----------------------------\n")
+            f.write("Compared full two-stage fine-tuning with stage2-only fine-tuning.\n")
+            f.write("See results in fine_tuning_stages_comparison.png\n\n")
+        
+        if not args.skip_mining:
+            f.write("2. Mining Strategies Ablation\n")
+            f.write("----------------------------\n")
+            f.write("Compared hard negative mining with semi-hard mining.\n")
+            f.write("See results in mining_strategies_comparison.png\n\n")
+        
+        if not args.skip_augmentation:
+            f.write("3. Data Augmentation Ablation\n")
+            f.write("----------------------------\n")
+            f.write("Compared model trained with augmented data vs. without augmentation.\n")
+            f.write("See results in data_augmentation_comparison.png\n\n")
+        
+        if not args.skip_model_size:
+            f.write("4. Model Size Ablation\n")
+            f.write("-----------------------\n")
+            f.write("Compared different model sizes: st5-base vs. st5-large.\n")
+            f.write("See results in model_size_comparison.png\n\n")
+    
+    print(f"Saved ablation study summary to {summary_file}")
+
+def ablation_fine_tuning_stages(test_df, loinc_df, checkpoint_dir, output_dir, fold=0, batch_size=16, max_samples=None):
+    """
+    Ablation study for fine-tuning stages
+    
+    Args:
+        test_df: Test data DataFrame
+        loinc_df: LOINC data DataFrame
+        checkpoint_dir: Directory with model checkpoints
+        output_dir: Directory to save results
+        fold: Fold to evaluate
+        batch_size: Batch size for inference
+        max_samples: Maximum number of samples to evaluate
+    """
+    ablation_configs = {
+        'stage1_stage2': {
+            'model_path': os.path.join(checkpoint_dir, f"stage2_fold{fold+1}_model.weights.h5"),
+            'results': {}
+        },
+        'stage2_only': {
+            'model_path': os.path.join(checkpoint_dir, f"stage2_only_fold{fold+1}_model.weights.h5"),
+            'results': {}
+        }
+    }
+    
+    # Run evaluation for each configuration
+    for config_name, config in ablation_configs.items():
+        print(f"\nRunning fine_tuning_stages ablation test with {config_name}...")
+        
+        # Check if model exists, if not use default model
+        if not os.path.exists(config['model_path']):
+            print(f"WARNING: Checkpoint not found at {config['model_path']}, using default")
+            config['model_path'] = os.path.join(checkpoint_dir, f"stage2_fold{fold+1}_model.weights.h5")
+        
+        # Get the actual file paths
+        test_file_path = os.path.abspath(test_df.SOURCE.iloc[0]) if isinstance(test_df, pd.DataFrame) and hasattr(test_df, 'SOURCE') and len(test_df) > 0 else ""
+        if not os.path.exists(test_file_path):
+            # If the source column doesn't contain file paths, use the original test file
+            test_file_path = os.path.abspath("output/mimic_pairs_processed.csv")
+        
+        loinc_file_path = os.path.abspath(loinc_df.LOINC_NUM.iloc[0]) if isinstance(loinc_df, pd.DataFrame) and hasattr(loinc_df, 'LOINC_NUM') and len(loinc_df) > 0 else ""
+        if not os.path.exists(loinc_file_path):
+            # If the loinc column doesn't contain file paths, use the original loinc file
+            loinc_file_path = os.path.abspath("output/expanded_target_pool.csv")
+        
+        cmd = [
+            'python', 'models/evaluation.py',
+            '--test_file', test_file_path,
+            '--loinc_file', loinc_file_path,
+            '--checkpoint_dir', checkpoint_dir,
+            '--output_dir', output_dir,
+            '--fold', str(fold),
+            '--expanded_pool',
+            '--ablation_id', f"fine_tuning_stages_{config_name}"
+        ]
+        
+        if max_samples is not None:
+            cmd.extend(['--max_samples', str(max_samples)])
+        
+        print(f"Command: {' '.join(cmd)}")
+        subprocess.run(cmd, check=True)
+        
+        # Read results
+        result_file = os.path.join(output_dir, f"fold{fold}_expanded_ablation_fine_tuning_stages_{config_name}_results.csv")
+        if os.path.exists(result_file):
+            try:
+                results = pd.read_csv(result_file)
+                config['results'] = {
+                    'top1_accuracy': results['top1_accuracy'].values[0],
+                    'top3_accuracy': results['top3_accuracy'].values[0],
+                    'top5_accuracy': results['top5_accuracy'].values[0]
                 }
+            except Exception as e:
+                print(f"Error reading results from {result_file}: {e}")
+    
+    # Compare results
+    print("\nFine-Tuning Stages Comparison:")
+    for config_name, config in ablation_configs.items():
+        if config['results']:
+            print(f"{config_name}:")
+            print(f"  Top-1 Accuracy: {config['results']['top1_accuracy']:.4f}")
+            print(f"  Top-3 Accuracy: {config['results']['top3_accuracy']:.4f}")
+            print(f"  Top-5 Accuracy: {config['results']['top5_accuracy']:.4f}")
+    
+    # Generate comparison plot
+    try:
+        plt.figure(figsize=(10, 6))
+        accuracy_metrics = ['top1_accuracy', 'top3_accuracy', 'top5_accuracy']
+        metric_labels = ['Top-1 Accuracy', 'Top-3 Accuracy', 'Top-5 Accuracy']
         
-        json.dump(serializable_results, f, indent=2)
+        x = np.arange(len(accuracy_metrics))
+        width = 0.35
+        
+        configs = list(ablation_configs.keys())
+        for i, config_name in enumerate(configs):
+            if ablation_configs[config_name]['results']:
+                values = [ablation_configs[config_name]['results'][metric] for metric in accuracy_metrics]
+                plt.bar(x + (i - 0.5) * width, values, width, label=config_name)
+        
+        plt.xlabel('Metric')
+        plt.ylabel('Accuracy')
+        plt.title('Fine-Tuning Stages Comparison')
+        plt.xticks(x, metric_labels)
+        plt.ylim(0, 1.0)
+        plt.legend()
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        
+        # Save plot
+        output_file = os.path.join(output_dir, 'fine_tuning_stages_comparison.png')
+        plt.savefig(output_file)
+        print(f"Saved fine-tuning stages comparison to {output_file}")
+    except Exception as e:
+        print(f"Error generating comparison plot: {e}")
+
+def ablation_mining_strategies(test_df, loinc_df, checkpoint_dir, output_dir, fold=0, batch_size=16, max_samples=None):
+    """
+    Ablation study for mining strategies
+    """
+    ablation_configs = {
+        'hard_negative': {
+            'model_path': os.path.join(checkpoint_dir, f"stage2_hard_negative_fold{fold+1}_model.weights.h5"),
+            'results': {}
+        },
+        'semi_hard': {
+            'model_path': os.path.join(checkpoint_dir, f"stage2_semi_hard_fold{fold+1}_model.weights.h5"),
+            'results': {}
+        }
+    }
+    
+    # Run evaluation for each configuration
+    for config_name, config in ablation_configs.items():
+        print(f"\nRunning mining_strategy ablation test with {config_name}...")
+        
+        # Check if model exists, if not use default model
+        if not os.path.exists(config['model_path']):
+            print(f"WARNING: Checkpoint not found at {config['model_path']}, using default")
+            config['model_path'] = os.path.join(checkpoint_dir, f"stage2_fold{fold+1}_model.weights.h5")
+        
+        # Get the actual file paths
+        test_file_path = os.path.abspath("output/mimic_pairs_processed.csv")
+        loinc_file_path = os.path.abspath("output/expanded_target_pool.csv")
+        
+        cmd = [
+            'python', 'models/evaluation.py',
+            '--test_file', test_file_path,
+            '--loinc_file', loinc_file_path,
+            '--checkpoint_dir', checkpoint_dir,
+            '--output_dir', output_dir,
+            '--fold', str(fold),
+            '--expanded_pool',
+            '--ablation_id', f"mining_strategy_{config_name}"
+        ]
+        
+        if max_samples is not None:
+            cmd.extend(['--max_samples', str(max_samples)])
+        
+        print(f"Command: {' '.join(cmd)}")
+        subprocess.run(cmd, check=True)
+        
+        # Read results
+        result_file = os.path.join(output_dir, f"fold{fold}_expanded_ablation_mining_strategy_{config_name}_results.csv")
+        if os.path.exists(result_file):
+            try:
+                results = pd.read_csv(result_file)
+                config['results'] = {
+                    'top1_accuracy': results['top1_accuracy'].values[0],
+                    'top3_accuracy': results['top3_accuracy'].values[0],
+                    'top5_accuracy': results['top5_accuracy'].values[0]
+                }
+            except Exception as e:
+                print(f"Error reading results from {result_file}: {e}")
+    
+    # Compare results
+    print("\nMining Strategies Comparison:")
+    for config_name, config in ablation_configs.items():
+        if config['results']:
+            print(f"{config_name}:")
+            print(f"  Top-1 Accuracy: {config['results']['top1_accuracy']:.4f}")
+            print(f"  Top-3 Accuracy: {config['results']['top3_accuracy']:.4f}")
+            print(f"  Top-5 Accuracy: {config['results']['top5_accuracy']:.4f}")
+    
+    # Generate comparison plot
+    try:
+        plt.figure(figsize=(10, 6))
+        accuracy_metrics = ['top1_accuracy', 'top3_accuracy', 'top5_accuracy']
+        metric_labels = ['Top-1 Accuracy', 'Top-3 Accuracy', 'Top-5 Accuracy']
+        
+        x = np.arange(len(accuracy_metrics))
+        width = 0.35
+        
+        configs = list(ablation_configs.keys())
+        for i, config_name in enumerate(configs):
+            if ablation_configs[config_name]['results']:
+                values = [ablation_configs[config_name]['results'][metric] for metric in accuracy_metrics]
+                plt.bar(x + (i - 0.5) * width, values, width, label=config_name)
+        
+        plt.xlabel('Metric')
+        plt.ylabel('Accuracy')
+        plt.title('Mining Strategies Comparison')
+        plt.xticks(x, metric_labels)
+        plt.ylim(0, 1.0)
+        plt.legend()
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        
+        # Save plot
+        output_file = os.path.join(output_dir, 'mining_strategies_comparison.png')
+        plt.savefig(output_file)
+        print(f"Saved mining strategies comparison to {output_file}")
+    except Exception as e:
+        print(f"Error generating comparison plot: {e}")
+
+def ablation_data_augmentation(test_df, loinc_df, checkpoint_dir, output_dir, fold=0, batch_size=16, augmented_test=False, max_samples=None):
+    """
+    Ablation study for data augmentation
+    """
+    ablation_configs = {
+        'with_augmentation': {
+            'model_path': os.path.join(checkpoint_dir, f"stage2_fold{fold+1}_model.weights.h5"),
+            'results': {}
+        },
+        'without_augmentation': {
+            'model_path': os.path.join(checkpoint_dir, f"stage2_no_aug_fold{fold+1}_model.weights.h5"),
+            'results': {}
+        }
+    }
+    
+    # Run evaluation for each configuration
+    for config_name, config in ablation_configs.items():
+        print(f"\nRunning data_augmentation ablation test with {config_name}...")
+        
+        # Check if model exists, if not use default model
+        if not os.path.exists(config['model_path']):
+            print(f"WARNING: Checkpoint not found at {config['model_path']}, using default")
+            config['model_path'] = os.path.join(checkpoint_dir, f"stage2_fold{fold+1}_model.weights.h5")
+        
+        # Get the actual file paths
+        test_file_path = os.path.abspath("output/mimic_pairs_processed.csv")
+        if augmented_test:
+            test_file_path = os.path.abspath("output/mimic_pairs_augmented.csv")
+        
+        loinc_file_path = os.path.abspath("output/expanded_target_pool.csv")
+        
+        cmd = [
+            'python', 'models/evaluation.py',
+            '--test_file', test_file_path,
+            '--loinc_file', loinc_file_path,
+            '--checkpoint_dir', checkpoint_dir,
+            '--output_dir', output_dir,
+            '--fold', str(fold),
+            '--expanded_pool',
+            '--ablation_id', f"data_augmentation_{config_name}"
+        ]
+        
+        if augmented_test:
+            cmd.append('--augmented_test')
+        
+        if max_samples is not None:
+            cmd.extend(['--max_samples', str(max_samples)])
+        
+        print(f"Command: {' '.join(cmd)}")
+        subprocess.run(cmd, check=True)
+        
+        # Read results
+        result_file_name = f"fold{fold}_expanded_ablation_data_augmentation_{config_name}_results.csv"
+        if augmented_test:
+            result_file_name = f"fold{fold}_augmented_expanded_ablation_data_augmentation_{config_name}_results.csv"
+        
+        result_file = os.path.join(output_dir, result_file_name)
+        if os.path.exists(result_file):
+            try:
+                results = pd.read_csv(result_file)
+                config['results'] = {
+                    'top1_accuracy': results['top1_accuracy'].values[0],
+                    'top3_accuracy': results['top3_accuracy'].values[0],
+                    'top5_accuracy': results['top5_accuracy'].values[0]
+                }
+            except Exception as e:
+                print(f"Error reading results from {result_file}: {e}")
+    
+    # Compare results
+    print("\nData Augmentation Comparison:")
+    for config_name, config in ablation_configs.items():
+        if config['results']:
+            print(f"{config_name}:")
+            print(f"  Top-1 Accuracy: {config['results']['top1_accuracy']:.4f}")
+            print(f"  Top-3 Accuracy: {config['results']['top3_accuracy']:.4f}")
+            print(f"  Top-5 Accuracy: {config['results']['top5_accuracy']:.4f}")
+    
+    # Generate comparison plot
+    try:
+        plt.figure(figsize=(10, 6))
+        accuracy_metrics = ['top1_accuracy', 'top3_accuracy', 'top5_accuracy']
+        metric_labels = ['Top-1 Accuracy', 'Top-3 Accuracy', 'Top-5 Accuracy']
+        
+        x = np.arange(len(accuracy_metrics))
+        width = 0.35
+        
+        configs = list(ablation_configs.keys())
+        for i, config_name in enumerate(configs):
+            if ablation_configs[config_name]['results']:
+                values = [ablation_configs[config_name]['results'][metric] for metric in accuracy_metrics]
+                plt.bar(x + (i - 0.5) * width, values, width, label=config_name)
+        
+        plt.xlabel('Metric')
+        plt.ylabel('Accuracy')
+        plt.title('Data Augmentation Comparison')
+        plt.xticks(x, metric_labels)
+        plt.ylim(0, 1.0)
+        plt.legend()
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        
+        # Save plot
+        output_file = os.path.join(output_dir, 'data_augmentation_comparison.png')
+        plt.savefig(output_file)
+        print(f"Saved data augmentation comparison to {output_file}")
+    except Exception as e:
+        print(f"Error generating comparison plot: {e}")
+
+def ablation_model_size(test_df, loinc_df, checkpoint_dir, output_dir, fold=0, batch_size=16, max_samples=None):
+    """
+    Ablation study for model sizes
+    """
+    ablation_configs = {
+        'st5_base': {
+            'model_path': os.path.join(checkpoint_dir, f"st5_base_fold{fold+1}_model.weights.h5"),
+            'results': {}
+        },
+        'st5_large': {
+            'model_path': os.path.join(checkpoint_dir, f"st5_large_fold{fold+1}_model.weights.h5"),
+            'results': {}
+        }
+    }
+    
+    # Run evaluation for each configuration
+    for config_name, config in ablation_configs.items():
+        print(f"\nRunning model_size ablation test with {config_name}...")
+        
+        # Check if model exists, if not use default model
+        if not os.path.exists(config['model_path']):
+            print(f"WARNING: Checkpoint not found at {config['model_path']}, using default")
+            config['model_path'] = os.path.join(checkpoint_dir, f"stage2_fold{fold+1}_model.weights.h5")
+        
+        # Get the actual file paths
+        test_file_path = os.path.abspath("output/mimic_pairs_processed.csv")
+        loinc_file_path = os.path.abspath("output/expanded_target_pool.csv")
+        
+        cmd = [
+            'python', 'models/evaluation.py',
+            '--test_file', test_file_path,
+            '--loinc_file', loinc_file_path,
+            '--checkpoint_dir', checkpoint_dir,
+            '--output_dir', output_dir,
+            '--fold', str(fold),
+            '--expanded_pool',
+            '--ablation_id', f"model_size_{config_name}"
+        ]
+        
+        if max_samples is not None:
+            cmd.extend(['--max_samples', str(max_samples)])
+        
+        print(f"Command: {' '.join(cmd)}")
+        subprocess.run(cmd, check=True)
+        
+        # Read results
+        result_file = os.path.join(output_dir, f"fold{fold}_expanded_ablation_model_size_{config_name}_results.csv")
+        if os.path.exists(result_file):
+            try:
+                results = pd.read_csv(result_file)
+                config['results'] = {
+                    'top1_accuracy': results['top1_accuracy'].values[0],
+                    'top3_accuracy': results['top3_accuracy'].values[0],
+                    'top5_accuracy': results['top5_accuracy'].values[0]
+                }
+            except Exception as e:
+                print(f"Error reading results from {result_file}: {e}")
+    
+    # Compare results
+    print("\nModel Size Comparison:")
+    for config_name, config in ablation_configs.items():
+        if config['results']:
+            print(f"{config_name}:")
+            print(f"  Top-1 Accuracy: {config['results']['top1_accuracy']:.4f}")
+            print(f"  Top-3 Accuracy: {config['results']['top3_accuracy']:.4f}")
+            print(f"  Top-5 Accuracy: {config['results']['top5_accuracy']:.4f}")
+    
+    # Generate comparison plot
+    try:
+        plt.figure(figsize=(10, 6))
+        accuracy_metrics = ['top1_accuracy', 'top3_accuracy', 'top5_accuracy']
+        metric_labels = ['Top-1 Accuracy', 'Top-3 Accuracy', 'Top-5 Accuracy']
+        
+        x = np.arange(len(accuracy_metrics))
+        width = 0.35
+        
+        configs = list(ablation_configs.keys())
+        for i, config_name in enumerate(configs):
+            if ablation_configs[config_name]['results']:
+                values = [ablation_configs[config_name]['results'][metric] for metric in accuracy_metrics]
+                plt.bar(x + (i - 0.5) * width, values, width, label=config_name)
+        
+        plt.xlabel('Metric')
+        plt.ylabel('Accuracy')
+        plt.title('Model Size Comparison')
+        plt.xticks(x, metric_labels)
+        plt.ylim(0, 1.0)
+        plt.legend()
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        
+        # Save plot
+        output_file = os.path.join(output_dir, 'model_size_comparison.png')
+        plt.savefig(output_file)
+        print(f"Saved model size comparison to {output_file}")
+    except Exception as e:
+        print(f"Error generating comparison plot: {e}")
 
 if __name__ == "__main__":
     main() 

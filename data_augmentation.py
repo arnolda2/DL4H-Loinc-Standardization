@@ -151,7 +151,32 @@ def acronym_substitution(text, related_terms=None):
     return result
 
 
-def augment_text(text, related_terms=None, num_augmentations=5):
+def append_scale_token(text, scale_type=None):
+    """
+    Append a scale sentinel token to the text.
+    
+    Args:
+        text (str): Input text
+        scale_type (str): The SCALE_TYP value (e.g., 'Qn', 'Ql', 'Ord', etc.)
+        
+    Returns:
+        str: Text with the scale sentinel token appended
+    """
+    if not text:
+        return text
+    
+    # If scale type is not provided or empty, use 'unk' as the default
+    if not scale_type or scale_type.strip() == '':
+        scale_type = 'unk'
+    
+    # Convert scale type to lowercase for consistency
+    scale_type = scale_type.lower()
+    
+    # Append the sentinel token to the text
+    return f"{text} ##scale={scale_type}##"
+
+
+def augment_text(text, related_terms=None, num_augmentations=5, scale_type=None):
     """
     Apply various text augmentation techniques to generate multiple variants of the input text
     
@@ -159,12 +184,17 @@ def augment_text(text, related_terms=None, num_augmentations=5):
         text (str): Input text
         related_terms (str): Semicolon-separated related terms
         num_augmentations (int): Number of augmented examples to generate
+        scale_type (str): The SCALE_TYP value for the sentinel token
         
     Returns:
         list: List of augmented text strings
     """
     if not text:
         return []
+        
+    # Apply scale token to original text if scale_type is provided
+    if scale_type:
+        text = append_scale_token(text, scale_type)
         
     augmented_texts = [text]  # Include original text
     
@@ -190,9 +220,18 @@ def augment_text(text, related_terms=None, num_augmentations=5):
             augmentation_pipeline.append(lambda t: random_swap(t, n=1))
             
         # Apply the selected augmentations
-        augmented_text = text
+        # Start with the original text without scale token to avoid augmenting the token itself
+        if scale_type:
+            augmented_text = text.split(" ##scale=")[0]
+        else:
+            augmented_text = text
+            
         for augmentation_func in augmentation_pipeline:
             augmented_text = augmentation_func(augmented_text)
+            
+        # Add scale token after augmentations if scale_type is provided
+        if scale_type:
+            augmented_text = append_scale_token(augmented_text, scale_type)
             
         augmented_texts.append(augmented_text)
         

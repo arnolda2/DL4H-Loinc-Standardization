@@ -31,23 +31,26 @@ def load_stage1_data(loinc_file_path, num_triplets=10000):
     print(f"Loading LOINC data from {loinc_file_path}")
     loinc_df = pd.read_csv(loinc_file_path)
     
-    # Collect all text representations and their corresponding LOINC codes
+    # Collect all text representations and their corresponding LOINC codes and scale types
     loinc_texts = []
     loinc_codes = []
+    loinc_scales = []
     
     # For each LOINC code, collect text from different fields
     for _, row in loinc_df.iterrows():
         loinc_code = row['LOINC_NUM']
+        scale_type = row.get('SCALE_TYP', 'unk')  # Use 'unk' if SCALE_TYP is not available
         
         for field in ['LONG_COMMON_NAME', 'SHORTNAME', 'DisplayName', 'RELATEDNAMES2']:
             if pd.notna(row[field]) and row[field]:
                 loinc_texts.append(row[field].lower())
                 loinc_codes.append(loinc_code)
+                loinc_scales.append(scale_type)
     
     print(f"Loaded {len(loinc_texts)} text representations for {len(np.unique(loinc_codes))} unique LOINC codes")
     
-    # Generate triplets for Stage 1
-    triplets = generate_stage1_triplets(loinc_texts, loinc_codes, num_triplets)
+    # Generate triplets for Stage 1, passing scales information
+    triplets = generate_stage1_triplets(loinc_texts, loinc_codes, num_triplets, loinc_scales)
     print(f"Generated {len(triplets)} triplets for Stage 1 fine-tuning")
     
     return triplets
@@ -620,109 +623,192 @@ def train_stage2_new(model, mimic_df, epochs=30, batch_size=32, learning_rate=1e
 
 def prepare_stage1_batch(loinc_df, batch_size, augment=True, num_augmentations=5):
     """
-    Prepare a batch for Stage 1 training (LOINC targets only)
+    Prepare a batch of training data for Stage 1 fine-tuning
     
     Args:
-        loinc_df: DataFrame with LOINC targets
+        loinc_df: DataFrame containing LOINC data
         batch_size: Batch size
-        augment: Whether to apply augmentation
-        num_augmentations: Number of augmentations per target
+        augment: Whether to apply data augmentation
+        num_augmentations: Number of augmentations to apply
         
     Returns:
-        texts: List of text strings
-        labels: List of corresponding LOINC codes
+        Tuple of (anchors, positives, negatives)
     """
-    # Sample random LOINC codes to form a batch
-    sampled_indices = np.random.choice(len(loinc_df), size=batch_size // num_augmentations, replace=False)
-    sampled_loinc = loinc_df.iloc[sampled_indices]
+    # Randomly select LOINC codes for this batch
+    batch_loinc_codes = np.random.choice(loinc_df['LOINC_NUM'].unique(), size=batch_size, replace=True)
     
-    texts = []
-    labels = []
+    anchors = []
+    positives = []
+    negatives = []
     
-    for _, row in sampled_loinc.iterrows():
-        # Combine different text representations (LCN, DN, SN) when available
-        text_options = []
+    for loinc_code in batch_loinc_codes:
+        # Filter LOINC data for this code
+        code_rows = loinc_df[loinc_df['LOINC_NUM'] == loinc_code]
         
-        for col in ['LONG_COMMON_NAME', 'SHORTNAME', 'DisplayName', 'RELATEDNAMES2']:
-            if col in row and pd.notna(row[col]) and row[col]:
-                text_options.append(str(row[col]).lower())
+        # Get the scale type for this LOINC code
+        scale_type = code_rows['SCALE_TYP'].iloc[0] if 'SCALE_TYP' in code_rows.columns else 'unk'
         
-        if not text_options:
+        # Get text fields for positive samples
+        text_fields = ['LONG_COMMON_NAME', 'SHORTNAME', 'DisplayName', 'RELATEDNAMES2']
+        available_texts = [code_rows[field].iloc[0] for field in text_fields 
+                          if field in code_rows.columns and pd.notna(code_rows[field].iloc[0])]
+        
+        # Filter out empty strings
+        available_texts = [text for text in available_texts if text]
+        
+        if len(available_texts) < 2:  # Need at least 2 text representations for anchor-positive pairs
             continue
             
-        loinc_code = row['LOINC_NUM']
+        # Select anchor and positive texts
+        anchor_idx, pos_idx = np.random.choice(len(available_texts), size=2, replace=False)
+        anchor_text = available_texts[anchor_idx]
+        positive_text = available_texts[pos_idx]
         
+        # Get a negative sample (different LOINC code)
+        neg_loinc_code = loinc_code
+        while neg_loinc_code == loinc_code:
+            neg_loinc_code = np.random.choice(loinc_df['LOINC_NUM'].unique(), size=1)[0]
+            
+        neg_rows = loinc_df[loinc_df['LOINC_NUM'] == neg_loinc_code]
+        neg_field = np.random.choice(text_fields)
+        while neg_field not in neg_rows.columns or pd.isna(neg_rows[neg_field].iloc[0]) or not neg_rows[neg_field].iloc[0]:
+            neg_field = np.random.choice(text_fields)
+            
+        negative_text = neg_rows[neg_field].iloc[0]
+        
+        # Get scale type for negative sample
+        neg_scale_type = neg_rows['SCALE_TYP'].iloc[0] if 'SCALE_TYP' in neg_rows.columns else 'unk'
+        
+        # Apply data augmentation if enabled
         if augment:
-            # Apply augmentation to each text option
-            for text in text_options:
-                augmented_texts = augment_text([text], num_variants=num_augmentations)
-                texts.extend(augmented_texts)
-                labels.extend([loinc_code] * len(augmented_texts))
+            # For anchor text
+            augmented_anchors = augment_text(anchor_text, related_terms=None, 
+                                            num_augmentations=num_augmentations, 
+                                            scale_type=scale_type)
+            
+            # For positive text
+            augmented_positives = augment_text(positive_text, related_terms=None, 
+                                             num_augmentations=num_augmentations, 
+                                             scale_type=scale_type)
+            
+            # For negative text
+            augmented_negatives = augment_text(negative_text, related_terms=None, 
+                                             num_augmentations=num_augmentations, 
+                                             scale_type=neg_scale_type)
+            
+            # Randomly select one augmented version for this batch
+            anchor_text = augmented_anchors[np.random.randint(0, len(augmented_anchors))]
+            positive_text = augmented_positives[np.random.randint(0, len(augmented_positives))]
+            negative_text = augmented_negatives[np.random.randint(0, len(augmented_negatives))]
         else:
-            texts.extend(text_options)
-            labels.extend([loinc_code] * len(text_options))
-    
-    # Ensure we don't exceed batch size
-    if len(texts) > batch_size:
-        texts = texts[:batch_size]
-        labels = labels[:batch_size]
+            # If not augmenting, still append the scale token
+            anchor_text = append_scale_token(anchor_text, scale_type)
+            positive_text = append_scale_token(positive_text, scale_type)
+            negative_text = append_scale_token(negative_text, neg_scale_type)
         
-    return texts, labels
+        anchors.append(anchor_text)
+        positives.append(positive_text)
+        negatives.append(negative_text)
+    
+    return anchors, positives, negatives
 
-def prepare_stage2_batch(mimic_df, batch_size, augment=True, num_augmentations=5):
+def prepare_stage2_batch(mimic_df, batch_size, augment=True, num_augmentations=5, loinc_df=None):
     """
-    Prepare a batch for Stage 2 training (MIMIC source-target pairs)
+    Prepare a batch of training data for Stage 2 fine-tuning
     
     Args:
-        mimic_df: DataFrame with MIMIC source-target pairs
+        mimic_df: DataFrame containing MIMIC-III source-target pairs
         batch_size: Batch size
-        augment: Whether to apply augmentation
-        num_augmentations: Number of augmentations per source
+        augment: Whether to apply data augmentation
+        num_augmentations: Number of augmentations to apply
+        loinc_df: DataFrame containing LOINC data with scale information (optional)
         
     Returns:
-        texts: List of text strings (sources and targets)
-        labels: List of corresponding LOINC codes
+        Tuple of (anchors, positives, negatives)
     """
-    # Sample random MIMIC pairs to form a batch
-    sampled_indices = np.random.choice(len(mimic_df), size=batch_size // (2 * num_augmentations), replace=False)
-    sampled_mimic = mimic_df.iloc[sampled_indices]
+    # Create scale mapping if LOINC data is provided
+    loinc_scale_mapping = {}
+    if loinc_df is not None and 'SCALE_TYP' in loinc_df.columns:
+        for _, row in loinc_df.iterrows():
+            if pd.notna(row['SCALE_TYP']):
+                loinc_scale_mapping[row['LOINC_NUM']] = row['SCALE_TYP']
     
-    texts = []
-    labels = []
+    # Randomly select pairs for this batch
+    batch_indices = np.random.choice(len(mimic_df), size=batch_size, replace=True)
     
-    for _, row in sampled_mimic.iterrows():
-        source_text = str(row['SOURCE']).lower()
-        loinc_code = row['LOINC_NUM']
+    anchors = []
+    positives = []
+    negatives = []
+    
+    for idx in batch_indices:
+        row = mimic_df.iloc[idx]
         
-        # Source text augmentation
-        if augment:
-            source_texts = augment_text([source_text], num_variants=num_augmentations)
+        anchor_text = row['source_text']
+        target_loinc = row['target_loinc']
+        
+        # Get scale type from LOINC mapping if available
+        scale_type = loinc_scale_mapping.get(target_loinc, 'unk')
+        
+        # Find positive sample (different source text with same target)
+        pos_candidates = mimic_df[mimic_df['target_loinc'] == target_loinc]
+        
+        if len(pos_candidates) > 1:
+            # Get another source that maps to the same target
+            pos_idx = np.random.choice([i for i in pos_candidates.index if i != idx])
+            positive_text = mimic_df.loc[pos_idx, 'source_text']
         else:
-            source_texts = [source_text]
-            
-        # Target text (just use as-is from the dataset)
-        target_text = str(row['TARGET']).lower()
+            # If no other sources map to this target, use the same source
+            # Augmentation will create a variant
+            positive_text = anchor_text
         
-        # Target text augmentation (optional)
-        if augment:
-            target_texts = augment_text([target_text], num_variants=num_augmentations)
+        # Find negative sample (source text with different target)
+        neg_candidates = mimic_df[mimic_df['target_loinc'] != target_loinc]
+        
+        if len(neg_candidates) > 0:
+            # Get a source that maps to a different target
+            neg_idx = np.random.choice(neg_candidates.index)
+            negative_text = mimic_df.loc[neg_idx, 'source_text']
+            
+            # Get the scale type for the negative sample if available
+            neg_target_loinc = mimic_df.loc[neg_idx, 'target_loinc']
+            neg_scale_type = loinc_scale_mapping.get(neg_target_loinc, 'unk')
         else:
-            target_texts = [target_text]
+            # This should not happen in a real dataset, but just in case
+            negative_text = anchor_text
+            neg_scale_type = scale_type
+        
+        # Apply data augmentation if enabled
+        if augment:
+            # For anchor text
+            augmented_anchors = augment_text(anchor_text, related_terms=None, 
+                                          num_augmentations=num_augmentations, 
+                                          scale_type=scale_type)
             
-        # Add source texts
-        texts.extend(source_texts)
-        labels.extend([loinc_code] * len(source_texts))
+            # For positive text
+            augmented_positives = augment_text(positive_text, related_terms=None, 
+                                             num_augmentations=num_augmentations, 
+                                             scale_type=scale_type)
+            
+            # For negative text
+            augmented_negatives = augment_text(negative_text, related_terms=None, 
+                                             num_augmentations=num_augmentations, 
+                                             scale_type=neg_scale_type)
+            
+            # Randomly select one augmented version for this batch
+            anchor_text = augmented_anchors[np.random.randint(0, len(augmented_anchors))]
+            positive_text = augmented_positives[np.random.randint(0, len(augmented_positives))]
+            negative_text = augmented_negatives[np.random.randint(0, len(augmented_negatives))]
+        else:
+            # If not augmenting, still append the scale token
+            anchor_text = append_scale_token(anchor_text, scale_type)
+            positive_text = append_scale_token(positive_text, scale_type)
+            negative_text = append_scale_token(negative_text, neg_scale_type)
         
-        # Add target texts
-        texts.extend(target_texts)
-        labels.extend([loinc_code] * len(target_texts))
+        anchors.append(anchor_text)
+        positives.append(positive_text)
+        negatives.append(negative_text)
     
-    # Ensure we don't exceed batch size
-    if len(texts) > batch_size:
-        texts = texts[:batch_size]
-        labels = labels[:batch_size]
-        
-    return texts, labels
+    return anchors, positives, negatives
 
 def main():
     parser = argparse.ArgumentParser(description='Train LOINC standardization model')

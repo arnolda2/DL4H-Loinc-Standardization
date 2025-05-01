@@ -184,13 +184,38 @@ def acronym_substitution(text):
             
     return result
 
-def augment_text(text_list, num_variants=5):
+def append_scale_token(text, scale_type=None):
+    """
+    Append a scale sentinel token to the text.
+    
+    Args:
+        text (str): Input text
+        scale_type (str): The SCALE_TYP value (e.g., 'Qn', 'Ql', 'Ord', etc.)
+        
+    Returns:
+        str: Text with the scale sentinel token appended
+    """
+    if not text:
+        return text
+    
+    # If scale type is not provided or empty, use 'unk' as the default
+    if not scale_type or scale_type.strip() == '':
+        scale_type = 'unk'
+    
+    # Convert scale type to lowercase for consistency
+    scale_type = scale_type.lower()
+    
+    # Append the sentinel token to the text
+    return f"{text} ##scale={scale_type}##"
+
+def augment_text(text_list, num_variants=5, scale_type=None):
     """
     Apply multiple augmentation techniques to create variations of the input texts
     
     Args:
         text_list: List of text strings to augment
         num_variants: Number of augmented variants to create for each input
+        scale_type: The SCALE_TYP value for the sentinel token (optional)
         
     Returns:
         List of augmented texts
@@ -198,35 +223,42 @@ def augment_text(text_list, num_variants=5):
     if not text_list:
         return []
         
-    augmented_texts = []
+    # Handle single string input
+    if isinstance(text_list, str):
+        text_list = [text_list]
     
+    augmented_texts = []
     for text in text_list:
-        if not text or not isinstance(text, str):
-            continue
+        # Apply scale token to original text if scale_type is provided
+        if scale_type:
+            original_text = text
+            text = append_scale_token(text, scale_type)
+        else:
+            original_text = text
             
-        # Add the original text
-        augmented_texts.append(text.lower())
+        # Always include the original text (or with scale token)
+        augmented_texts.append(text)
         
-        # Create additional variants
-        for _ in range(num_variants - 1):
-            # Apply a random sequence of augmentations
-            augmented_text = text.lower()
+        # Generate additional variants
+        for _ in range(num_variants - 1):  # -1 because we already added the original
+            # Start with original text (without scale token) for augmentation
+            text_to_augment = original_text
             
-            # Randomly apply each augmentation with 50% probability
-            if random.random() < 0.5:
-                augmented_text = char_random_deletion(augmented_text)
+            # Randomly apply augmentation techniques
+            if random.random() < 0.3:
+                text_to_augment = char_random_deletion(text_to_augment)
                 
-            if random.random() < 0.5:
-                augmented_text = word_random_swapping(augmented_text)
+            if random.random() < 0.3:
+                text_to_augment = word_random_swapping(text_to_augment)
                 
-            if random.random() < 0.5:
-                # For word insertion, use the original text as related terms
-                augmented_text = word_random_insertion(augmented_text, [text])
+            if random.random() < 0.3:
+                text_to_augment = acronym_substitution(text_to_augment)
+            
+            # Add scale token after augmentation if scale_type is provided
+            if scale_type:
+                text_to_augment = append_scale_token(text_to_augment, scale_type)
                 
-            if random.random() < 0.5:
-                augmented_text = acronym_substitution(augmented_text)
-                
-            augmented_texts.append(augmented_text)
+            augmented_texts.append(text_to_augment)
     
     return augmented_texts
 
