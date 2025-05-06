@@ -1,0 +1,78 @@
+# 2. Introduction
+
+## 2.1 Paper Description and Contribution
+
+The original paper, "Automated LOINC Standardization Using Pre-trained Large Language Models" [1], addresses a critical challenge in healthcare data interoperability: the standardization of local laboratory codes to the Logical Observation Identifiers Names and Codes (LOINC) system. LOINC standardization is essential for enabling multi-center data aggregation and research, but the task is complicated by idiosyncratic local lab coding schemes and the vast number of potential LOINC codes (over 80,000).
+
+The paper makes several notable contributions to the field of clinical data standardization:
+
+1. It leverages contextual embeddings from pre-trained language models (specifically Sentence-T5) for LOINC mapping, eliminating the need for manual feature engineering that had limited previous approaches.
+
+2. It proposes a novel two-stage fine-tuning strategy based on contrastive learning that enables effective training with limited labeled data. The first stage uses only LOINC target data (without source-target pairs), while the second stage fine-tunes on source-target pairs.
+
+3. It demonstrates that a contrastive learning approach (using triplet loss) enables the model to generalize to unseen targets without retraining, addressing a key limitation of classification-based approaches.
+
+4. It achieves high accuracy in retrieving relevant LOINC codes while maintaining generalizability across different data sources and unseen targets.
+
+Unlike traditional rule-based or classification models, which rely heavily on hand-crafted features or can only handle a fixed set of LOINC codes, this approach offers both flexibility and scalability. The model can theoretically map to any LOINC code in the catalog without retraining, making it particularly valuable for practical clinical applications.
+
+## 2.2 Scope of Reproducibility
+
+Our project successfully reproduced the key components of the original paper, including:
+
+1. **Dataset Processing**: We implemented the complete data preprocessing pipeline described in the paper. However, due to computational constraints, we worked with a randomly sampled subset (10%) of the LOINC data rather than the full 78,209 LOINC codes used in the original paper. We maintained the full MIMIC-III source-target pairs (579 pairs) as described in the paper.
+
+2. **Model Architecture**: We successfully replicated the model architecture, using a frozen Sentence-T5 backbone followed by a trainable dense projection layer (768→128 dimensions) with L2 normalization.
+
+3. **Two-Stage Training**: We implemented both training stages as described in the paper:
+   - Stage 1: Fine-tuning on augmented LOINC target data with semi-hard negative mining
+   - Stage 2: Further fine-tuning on source-target pairs with hard negative mining
+
+4. **Data Augmentation**: We implemented the text augmentation techniques described in the paper, including character-level random deletion, word-level random swapping, word-level random insertion, and word-level acronym substitution.
+
+5. **Evaluation Metrics**: We reproduced the paper's evaluation methodology, calculating Top-k accuracy (k=1, 3, 5) based on cosine similarity between source and target embeddings.
+
+6. **Ablation Studies**: We conducted ablation studies similar to those in the paper to assess the contribution of different components (fine-tuning stages, mining strategies).
+
+We were able to achieve performance metrics comparable to those reported in the paper, although with some differences due to our use of a subset of the LOINC data and potential differences in implementation details not fully specified in the original paper.
+
+## 2.3 Data Preprocessing and Methodology
+
+Our data preprocessing approach followed the paper's methodology with several key steps:
+
+### LOINC Data Processing
+1. We started with the LOINC database (version 2.72), which contains over 80,000 LOINC codes.
+2. Due to computational constraints, we randomly sampled 10% of the LOINC codes while maintaining the distribution of different LOINC types. This reduced our working set to approximately 7,800 LOINC codes compared to the 78,209 codes used in the original paper.
+3. For each LOINC code, we extracted three variants of text labels as mentioned in the paper: Long Common Name (LCN), Display Name (DN), and Short Name (SN).
+4. We also extracted synonyms and related terms from the "RELATEDNAMES2" field when available.
+5. All text was converted to lowercase to standardize the input.
+
+### MIMIC-III Data Processing
+1. We used the "d_labitems" table from the MIMIC-III database, which contains local laboratory item definitions.
+2. Following the paper's methodology, we created source-target pairs by:
+   - Using the "ITEMID", "LABEL", "FLUID", and "LOINC_CODE" fields
+   - Concatenating the "LABEL" and "FLUID" fields to create the source text
+   - Converting all text to lowercase
+   - Filtering to include only rows where LOINC_CODE was present
+3. This resulted in 579 source-target pairs with 571 unique LOINC targets, matching the dataset described in the paper.
+
+### Data Augmentation
+To address data scarcity, we implemented the augmentation techniques described in the paper:
+1. Character-level random deletion (removing random characters)
+2. Word-level random swapping (changing word order)
+3. Word-level random insertion (adding related terms)
+4. Word-level acronym substitution (replacing terms with acronyms)
+
+These augmentation techniques were applied to both source and target texts to create variations that mimic real-world heterogeneity in laboratory descriptions.
+
+### Training Data Preparation
+For Stage 1 training, we created triplets from our sampled LOINC targets, where:
+- The anchor was one text variant of a LOINC code
+- The positive example was another variant of the same LOINC code
+- The negative example was a variant of a different LOINC code
+
+For Stage 2 training, we incorporated the MIMIC-III source-target pairs and implemented 5-fold cross-validation as described in the paper.
+
+Our approach demonstrates the feasibility of reproducing the paper's methodology even with computational constraints by working with a carefully sampled subset of the data. The use of 10% random sampling allowed us to maintain representativeness while making the project computationally tractable on our available hardware.
+
+[1] Tu, T., Loreaux, E., Chesley, E., Lelkes, A. D., Gamble, P., Bellaiche, M., Seneviratne, M., & Chen, M. J. (2022). Automated LOINC Standardization Using Pre-trained Large Language Models. Google Research. 

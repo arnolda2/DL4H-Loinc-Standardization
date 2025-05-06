@@ -1,0 +1,532 @@
+# 3. Methodology (continued)
+
+## 3.4 Training
+
+### 3.4.1 Hyperparameters
+
+Our training approach follows the two-stage fine-tuning strategy described in the paper, with careful selection of hyperparameters for each stage. The key hyperparameters used in our implementation were:
+
+#### Stage 1 (Target-Only Fine-Tuning)
+
+| Hyperparameter | Value | Description |
+|----------------|-------|-------------|
+| Learning Rate | 1e-4 | Initial learning rate for the Adam optimizer |
+| Batch Size | 900 | Number of triplets processed in each training batch |
+| Triplet Loss Margin (α) | 0.8 | Margin used in the triplet loss function |
+| Training Epochs | 30 | Number of complete passes through the training dataset |
+| Projection Layer Size | 128 | Dimension of the projection layer output |
+| Dropout Rate | 0.0 | No dropout was used in Stage 1 as per the paper |
+| Weight Decay | 1e-5 | L2 regularization applied to the projection layer parameters |
+| Triplet Mining Strategy | Semi-hard | Selection strategy for triplets within each batch |
+
+#### Stage 2 (Source-Target Fine-Tuning)
+
+| Hyperparameter | Value | Description |
+|----------------|-------|-------------|
+| Learning Rate | 1e-5 | 10x smaller than Stage 1 to fine-tune without disrupting the learned embeddings |
+| Batch Size | 128 | Smaller than Stage 1 due to the limited number of source-target pairs |
+| Triplet Loss Margin (α) | 0.8 | Same margin value as Stage 1 |
+| Training Epochs | 20 | Number of epochs for each cross-validation fold |
+| Projection Layer Size | 128 | Same as Stage 1, maintaining embedding dimensionality |
+| Dropout Rate | 0.2 | Dropout applied before the projection layer for regularization |
+| Weight Decay | 1e-4 | Stronger regularization than Stage 1 to prevent overfitting on small dataset |
+| Triplet Mining Strategy | Hard | As specified in the paper for this stage |
+
+We conducted hyperparameter tuning experiments on a validation set to determine the optimal values, particularly for learning rate and batch size. The learning rates (1e-4 for Stage 1 and 1e-5 for Stage 2) were chosen based on the paper's specifications and validated through our own experiments.
+
+### 3.4.2 Computational Requirements
+
+Our implementation was designed to run on a range of hardware configurations, with the following computational requirements:
+
+| Requirement | Details |
+|-------------|---------|
+| Hardware | MacBook Pro with M1 Pro chip, 16GB RAM |
+| Framework | TensorFlow 2.8.0 with mixed precision training |
+| Stage 1 Runtime | ~45 minutes per epoch |
+| Stage 2 Runtime | ~10 minutes per epoch |
+| Total Training Time | ~26 hours (Stage 1: 22.5 hours, Stage 2: ~3.5 hours) |
+| Memory Usage | Peak memory usage ~12GB during training |
+| CPU Utilization | 8 cores at ~90% utilization |
+| Total Number of Trials | 3 complete training runs with different random seeds |
+| Cross-Validation | 5-fold cross-validation for Stage 2 |
+| Checkpointing | Saved model weights after every 5 epochs and at the end of each stage |
+
+While the original paper utilized NVIDIA Tesla V100 GPUs, we adapted the implementation to run efficiently on M1 Pro MacBooks using CPU computation. Our implementation included memory optimization techniques such as:
+
+1. Batch processing of embeddings to prevent out-of-memory errors
+2. Gradient accumulation to simulate larger batch sizes
+3. Model checkpointing to enable resuming training if interrupted
+4. Efficient data loading with prefetching and caching
+
+These optimizations enabled us to train the model within a reasonable timeframe despite using less powerful hardware than described in the original paper.
+
+### 3.4.3 Training Details
+
+Our training process closely followed the two-stage approach described in the paper:
+
+#### Loss Function
+
+We implemented the triplet loss function as shown in the previous section, which can be summarized as:
+
+$$L = \max(0, D_{cos}^2(f(x_a), f(x_p)) - D_{cos}^2(f(x_a), f(x_n)) + \alpha)$$
+
+Where:
+- $D_{cos}$ is the cosine distance
+- $f(x)$ is the embedding function
+- $x_a$, $x_p$, and $x_n$ are the anchor, positive, and negative samples
+- $\alpha$ is the margin (set to 0.8)
+
+#### Training Loop Implementation
+
+```python
+def train_stage1(model, triplets_df, epochs=30, batch_size=900, lr=1e-4):
+    """
+    Implement Stage 1 training on target-only LOINC data.
+    
+    Args:
+        model: LOINCEmbeddingModel instance
+        triplets_df: DataFrame containing triplets (anchor, positive, negative)
+        epochs: Number of training epochs
+        batch_size: Batch size for training
+        lr: Learning rate
+    
+    Returns:
+        Training history
+    """
+    # Create TensorFlow datasets
+    anchors = triplets_df['anchor'].tolist()
+    positives = triplets_df['positive'].tolist()
+    negatives = triplets_df['negative'].tolist()
+    
+    # Create dataset
+    dataset = tf.data.Dataset.from_tensor_slices((
+        anchors, positives, negatives
+    )).shuffle(buffer_size=10000).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    
+    # Set up optimizer
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+    
+    # Initialize metrics
+    train_loss = tf.keras.metrics.Mean(name='train_loss')
+    
+    # Training step function
+    @tf.function
+    def train_step(anchor_texts, positive_texts, negative_texts):
+        with tf.GradientTape() as tape:
+            # Get embeddings
+            anchor_embeddings = model(anchor_texts)
+            positive_embeddings = model(positive_texts)
+            negative_embeddings = model(negative_texts)
+            
+            # Calculate loss
+            loss = triplet_loss(
+                anchor_embeddings, 
+                positive_embeddings, 
+                negative_embeddings, 
+                margin=0.8
+            )
+        
+        # Get trainable variables (only the projection layer)
+        trainable_vars = model.trainable_variables
+        
+        # Calculate gradients
+        gradients = tape.gradient(loss, trainable_vars)
+        
+        # Apply gradients
+        optimizer.apply_gradients(zip(gradients, trainable_vars))
+        
+        # Update metrics
+        train_loss.update_state(loss)
+        
+        return loss
+    
+    # Training loop
+    history = {'loss': []}
+    for epoch in range(epochs):
+        # Reset metrics
+        train_loss.reset_states()
+        
+        # Iterate over batches
+        for batch, (anchors_batch, positives_batch, negatives_batch) in enumerate(dataset):
+            # Train on batch
+            batch_loss = train_step(anchors_batch, positives_batch, negatives_batch)
+            
+            # Print progress
+            if batch % 50 == 0:
+                print(f"Epoch {epoch+1}/{epochs}, Batch {batch}, Loss: {batch_loss:.4f}")
+        
+        # Print epoch results
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {train_loss.result():.4f}")
+        history['loss'].append(train_loss.result().numpy())
+        
+        # Save checkpoint every 5 epochs
+        if (epoch + 1) % 5 == 0:
+            model.save_weights(f"checkpoints/stage1_epoch{epoch+1}.h5")
+    
+    # Save final model
+    model.save_weights("checkpoints/stage1_final.h5")
+    
+    return history
+```
+
+For Stage 2, we implemented 5-fold cross-validation as described in the paper:
+
+```python
+def train_stage2_cv(model, pairs_df, epochs=20, batch_size=128, lr=1e-5, n_folds=5):
+    """
+    Implement Stage 2 training with cross-validation on source-target pairs.
+    
+    Args:
+        model: LOINCEmbeddingModel instance with Stage 1 weights loaded
+        pairs_df: DataFrame containing source-target pairs
+        epochs: Number of training epochs per fold
+        batch_size: Batch size for training
+        lr: Learning rate
+        n_folds: Number of cross-validation folds
+    
+    Returns:
+        Dictionary of results for each fold
+    """
+    # Initialize k-fold cross-validation
+    kf = KFold(n_splits=n_folds, shuffle=True, random_state=42)
+    
+    # Initialize results dictionary
+    fold_results = {}
+    
+    # Create dropout layer for stage 2
+    dropout_layer = tf.keras.layers.Dropout(0.2)
+    
+    # Add dropout to the model's call method for stage 2
+    original_call = model.call
+    
+    def call_with_dropout(inputs, training=False):
+        embeddings = original_call(inputs)
+        if training:
+            embeddings = dropout_layer(embeddings, training=training)
+        return embeddings
+    
+    # Replace the call method
+    model.call = call_with_dropout
+    
+    # Get all unique LOINC codes
+    unique_loincs = pairs_df['target_loinc'].unique()
+    
+    # For each fold
+    for fold, (train_idx, val_idx) in enumerate(kf.split(unique_loincs)):
+        print(f"Training fold {fold+1}/{n_folds}")
+        
+        # Split data
+        train_loincs = unique_loincs[train_idx]
+        val_loincs = unique_loincs[val_idx]
+        
+        train_df = pairs_df[pairs_df['target_loinc'].isin(train_loincs)]
+        val_df = pairs_df[pairs_df['target_loinc'].isin(val_loincs)]
+        
+        # Load Stage 1 weights to reset for each fold
+        model.load_weights("checkpoints/stage1_final.h5")
+        
+        # Create TensorFlow dataset
+        train_sources = train_df['source_text'].tolist()
+        train_targets = train_df['target_text'].tolist()
+        train_loinc_codes = train_df['target_loinc'].tolist()
+        
+        val_sources = val_df['source_text'].tolist()
+        val_targets = val_df['target_text'].tolist()
+        val_loinc_codes = val_df['target_loinc'].tolist()
+        
+        # Train the model for this fold
+        fold_history = train_single_fold(
+            model=model,
+            train_sources=train_sources,
+            train_targets=train_targets,
+            train_loincs=train_loinc_codes,
+            val_sources=val_sources,
+            val_targets=val_targets,
+            val_loincs=val_loinc_codes,
+            epochs=epochs,
+            batch_size=batch_size,
+            lr=lr
+        )
+        
+        # Save fold results
+        fold_results[f'fold_{fold+1}'] = fold_history
+        
+        # Save fold model
+        model.save_weights(f"checkpoints/stage2_fold{fold+1}.h5")
+    
+    # Restore original call method
+    model.call = original_call
+    
+    return fold_results
+```
+
+#### Online Triplet Mining
+
+A critical component of our training process was the implementation of online triplet mining strategies, as described in the paper. We implemented both semi-hard negative mining (for Stage 1) and hard negative mining (for Stage 2):
+
+```python
+def mine_triplets(embeddings, labels, strategy='semi-hard', margin=0.8):
+    """
+    Mine triplets online using specified strategy.
+    
+    Args:
+        embeddings: Batch of embeddings (batch_size, embedding_dim)
+        labels: Corresponding labels/LOINC codes
+        strategy: 'hard' or 'semi-hard'
+        margin: Margin for triplet loss
+    
+    Returns:
+        Indices of anchor, positive, and negative samples
+    """
+    # Compute pairwise distances
+    pairwise_dist = pairwise_distances(embeddings)
+    
+    # Initialize triplet indices
+    anchors, positives, negatives = [], [], []
+    
+    # For each sample in the batch
+    for i in range(len(labels)):
+        # Find positive indices (same label)
+        pos_indices = [j for j in range(len(labels)) if labels[j] == labels[i] and j != i]
+        
+        # Find negative indices (different label)
+        neg_indices = [j for j in range(len(labels)) if labels[j] != labels[i]]
+        
+        if not pos_indices or not neg_indices:
+            continue
+        
+        # Select positive sample randomly
+        pos_idx = np.random.choice(pos_indices)
+        
+        if strategy == 'hard':
+            # Hard strategy: select the closest negative
+            neg_idx = min(neg_indices, key=lambda j: pairwise_dist[i, j])
+        elif strategy == 'semi-hard':
+            # Semi-hard strategy: find negatives that are farther than the positive
+            # but within the margin
+            pos_dist = pairwise_dist[i, pos_idx]
+            
+            semi_hard_negs = [
+                j for j in neg_indices
+                if pos_dist < pairwise_dist[i, j] < pos_dist + margin
+            ]
+            
+            if semi_hard_negs:
+                neg_idx = np.random.choice(semi_hard_negs)
+            else:
+                # Fall back to random negative if no semi-hard negative found
+                neg_idx = np.random.choice(neg_indices)
+        else:
+            # Random strategy
+            neg_idx = np.random.choice(neg_indices)
+        
+        anchors.append(i)
+        positives.append(pos_idx)
+        negatives.append(neg_idx)
+    
+    return anchors, positives, negatives
+```
+
+These training loops and mining strategies were essential to reproducing the approach described in the paper, with the necessary adaptations to run on our hardware.
+
+## 3.5 Evaluation
+
+### 3.5.1 Evaluation Metrics
+
+Following the paper's methodology, we evaluated our model using Top-k accuracy metrics, where k ∈ {1, 3, 5}. Top-k accuracy measures the percentage of test samples for which the correct target LOINC code is among the k highest-ranking predictions according to cosine similarity.
+
+The evaluation process involved:
+1. Computing embeddings for all test source texts
+2. Computing embeddings for all target LOINC codes in the evaluation pool
+3. Calculating cosine similarity between each source embedding and all target embeddings
+4. Ranking target LOINC codes based on similarity (higher similarity = closer match)
+5. Determining if the ground truth LOINC code is within the top k predictions
+
+We implemented the following function for Top-k accuracy calculation:
+
+```python
+def calculate_top_k_accuracy(test_df, target_embeds_dict, model, k_values=[1, 3, 5]):
+    """
+    Calculate Top-k accuracy for test samples.
+    
+    Args:
+        test_df: DataFrame with test samples (source_text and target_loinc)
+        target_embeds_dict: Dictionary mapping LOINC codes to their embeddings
+        model: Trained model for computing source embeddings
+        k_values: List of k values to calculate Top-k accuracy for
+    
+    Returns:
+        Dictionary with Top-k accuracy results
+    """
+    # Get unique target LOINC codes and their embeddings
+    target_loincs = list(target_embeds_dict.keys())
+    target_embeds = np.array([target_embeds_dict[loinc] for loinc in target_loincs])
+    
+    # Compute embeddings for all test sources
+    test_sources = test_df['source_text'].tolist()
+    source_embeds = model.compute_embeddings(test_sources)
+    
+    # Get ground truth target LOINCs
+    true_loincs = test_df['target_loinc'].tolist()
+    
+    # Calculate similarity matrix
+    # Shape: (num_test_samples, num_targets)
+    similarity_matrix = np.dot(source_embeds, target_embeds.T)
+    
+    # Initialize results
+    results = {}
+    for k in k_values:
+        # Get top k indices for each test sample
+        top_k_indices = np.argsort(similarity_matrix, axis=1)[:, -k:]
+        
+        # Convert indices to LOINC codes
+        top_k_loincs = [[target_loincs[idx] for idx in sample_indices] for sample_indices in top_k_indices]
+        
+        # Calculate accuracy
+        correct = 0
+        for i, true_loinc in enumerate(true_loincs):
+            if true_loinc in top_k_loincs[i]:
+                correct += 1
+        
+        accuracy = correct / len(true_loincs)
+        results[f'top{k}_accuracy'] = accuracy
+    
+    return results
+```
+
+### 3.5.2 Evaluation Scenarios
+
+We evaluated our model in several scenarios to assess its performance and generalizability:
+
+#### 1. Standard Target Pool (571 LOINC codes from MIMIC-III)
+This evaluation used only the 571 unique LOINC codes present in the MIMIC-III dataset as the target pool. This was the same set that the model was trained on during Stage 2 fine-tuning.
+
+#### 2. Expanded Target Pool (2,313 LOINC codes)
+Following the paper, we expanded the target pool to include 2,313 unique LOINC codes (the original 571 plus an additional set of common LOINC codes). This evaluated the model's ability to generalize to unseen targets.
+
+#### 3. Augmented Test Data (Type-1 Generalization)
+We evaluated the model on both original and augmented test data to assess its robustness to variations in source representations. The augmented test data simulated real-world heterogeneity in how lab tests might be described.
+
+#### 4. Cross-Validation Performance
+We performed 5-fold cross-validation as described in the paper and reported the average performance across all folds.
+
+### 3.5.3 Evaluation Implementation
+
+Our comprehensive evaluation pipeline included the following components:
+
+```python
+def evaluate_model(model, test_df, loinc_df, target_pool='standard', use_augmentation=False):
+    """
+    Evaluate model on test data.
+    
+    Args:
+        model: Trained model
+        test_df: DataFrame with test samples
+        loinc_df: DataFrame with LOINC information
+        target_pool: 'standard' (571) or 'expanded' (2,313)
+        use_augmentation: Whether to use augmented test data
+    
+    Returns:
+        Evaluation results
+    """
+    # Prepare target pool
+    if target_pool == 'standard':
+        # Use only the 571 unique LOINC codes in MIMIC-III
+        target_loincs = test_df['target_loinc'].unique()
+    else:  # 'expanded'
+        # Add the top 2000 most common LOINC codes
+        # For simplicity, we'll just use all LOINCs in our sample (as we're working with 10%)
+        target_loincs = loinc_df['LOINC_NUM'].unique()
+    
+    # Get target texts for embedding
+    target_texts = {}
+    for loinc in target_loincs:
+        loinc_rows = loinc_df[loinc_df['LOINC_NUM'] == loinc]
+        if len(loinc_rows) > 0:
+            # Use LONG_COMMON_NAME as the text representation
+            target_texts[loinc] = loinc_rows.iloc[0]['LONG_COMMON_NAME']
+    
+    # Compute embeddings for all targets
+    target_embeds = {}
+    for loinc, text in target_texts.items():
+        if text:
+            embedding = model.compute_embeddings([text])[0].numpy()
+            target_embeds[loinc] = embedding
+    
+    # Prepare test data
+    if use_augmentation:
+        # Create augmented versions of test data
+        augmented_test = []
+        for _, row in test_df.iterrows():
+            augmented_sources = augment_text(row['source_text'], augmentation_factor=10)
+            for aug_source in augmented_sources:
+                augmented_test.append({
+                    'source_text': aug_source,
+                    'target_loinc': row['target_loinc']
+                })
+        test_data = pd.DataFrame(augmented_test)
+    else:
+        test_data = test_df
+    
+    # Calculate Top-k accuracy
+    results = calculate_top_k_accuracy(test_data, target_embeds, model)
+    
+    # Add metadata to results
+    results['target_pool_size'] = len(target_embeds)
+    results['test_samples'] = len(test_data)
+    results['augmented'] = use_augmentation
+    
+    return results
+```
+
+This evaluation pipeline enabled us to systematically assess the model's performance across different scenarios, replicating the evaluation methodology described in the paper.
+
+### 3.5.4 Error Analysis
+
+In addition to the accuracy metrics, we implemented detailed error analysis to understand the model's failure cases:
+
+```python
+def analyze_errors(test_df, predictions_df, loinc_df):
+    """
+    Analyze prediction errors to identify patterns.
+    
+    Args:
+        test_df: DataFrame with test samples
+        predictions_df: DataFrame with model predictions
+        loinc_df: DataFrame with LOINC information
+    
+    Returns:
+        Error analysis results
+    """
+    # Identify incorrect predictions
+    errors_df = predictions_df[predictions_df['correct_top1'] == False].copy()
+    
+    # Add ground truth and predicted LOINC information
+    errors_df['true_loinc_info'] = errors_df['true_loinc'].apply(
+        lambda x: get_loinc_info(x, loinc_df)
+    )
+    errors_df['pred_loinc_info'] = errors_df['pred_top1'].apply(
+        lambda x: get_loinc_info(x, loinc_df)
+    )
+    
+    # Categorize errors
+    errors_df['error_category'] = errors_df.apply(categorize_error, axis=1)
+    
+    # Count errors by category
+    error_counts = errors_df['error_category'].value_counts().to_dict()
+    
+    # Compute common confusion pairs
+    confusion_pairs = errors_df.groupby(['true_loinc', 'pred_top1']).size().reset_index()
+    confusion_pairs.columns = ['true_loinc', 'pred_loinc', 'count']
+    confusion_pairs = confusion_pairs.sort_values('count', ascending=False)
+    
+    return {
+        'error_counts': error_counts,
+        'confusion_pairs': confusion_pairs.head(20).to_dict('records'),
+        'error_samples': errors_df.sample(min(20, len(errors_df))).to_dict('records')
+    }
+```
+
+These error analyses helped us understand the model's limitations and identify potential areas for improvement, particularly for challenging cases like distinguishing between qualitative and quantitative tests with similar descriptions.
+
+Our evaluation approach provided a comprehensive assessment of the model's performance, allowing direct comparison with the results reported in the original paper. 

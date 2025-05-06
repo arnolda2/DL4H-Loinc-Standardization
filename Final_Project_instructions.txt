@@ -1,0 +1,79 @@
+
+Please follow the below format:
+ 
+1. Abstract (2)
+a. Link to your video (1)
+i. No points will be awarded if the link is not clickable or does not direct to your public project video (e.g., YouTube, OneDrive, Google Drive, or https://mediaspace.illinois.edu/).
+
+b. Link to Public GitHub Repo (1)
+i. No points will be awarded if the link is not clickable or does not direct to your public project repository.
+
+
+2. Introduction (3)
+a. A clear, high-level description of what the original paper is about and what is its contribution to the wider research space. Cite the original paper. (2)
+
+b. Scope of reproducibility (1)
+i. How much of the paper were you able to reproduce?
+1. The dataset processing?
+2. The model?
+3. Baselines?
+ii. Note: We understand that it can be difficult to reproduce research. We will grade very leniently. Just do your best and go as far as you can within limits.
+
+
+3. Methodology (20)
+a. Environment (2)
+i. Python version (1)
+ii. Dependencies/packages needed (1)
+
+b. Data (5)
+i. Data download instructions
+ii. Data descriptions with helpful tables and visualizations
+iii. Please use LLMs to help in writing data preprocessing code
+
+c. Model (5)
+i. Includes link to the original paper’s repo (if applicable)
+ii. Includes descriptions of the model (4)
+1. Equations and their explanations (if applicable)
+2. Breakdown of inputs and outputs, techniques used, etc.
+iii. Use LLMs to help with the implementation of the model used
+iv. Pretrained model (if applicable)
+
+d. Training (4)
+i. Includes Hyperparameters (2)
+1. Report at least 3 types of hyperparameters such as learning rate, batch size, hidden size, and dropout.
+ii. Includes Computational requirements (1)
+1. Report at least 3 types of requirements such as type of hardware, average runtime for each epoch, total number of trials, GPU hrs used, and # training epochs.
+iii. Includes Training Details (1)
+1. Loss functions
+2. Please use LLMs to help write code for the training loop.
+
+e. Evaluation (4)
+i. Please use LLMs to help identify and write code for metrics and evaluations.
+ii. Report the descriptions of metrics you use in the reproduction
+
+
+4. Results (15)
+a. Includes a table/figures of results (5)
+
+b. Discuss your results with respect to the hypothesis and results from the original paper (5)
+i. Compare and contrast the results
+ii. Explain why the results may be the same or different.
+
+c. Additional Extensions or Ablations (5)
+i. Use LLMs to help brainstorm at least one new extension - new dataset, new loss function, removing a part of the model (ablation study), etc.
+ii. Use LLMs to help implement your planned extension/ablation and validate them. Include results and a discussion of the extension/ablation.
+
+
+
+5. Discussion (8)
+a. Implications of the experimental results. (4)
+i. Is the original paper reproducible? And if it wasn’t, what factors made it irreproducible?
+b. What was easy? (1)
+c. What was difficult? (1)
+d. Recommendations to the original authors or others who work in this area for improving reproducibility (2)
+
+6. Author Contributions (2)
+a. Please clearly mention the workload distribution between the group members.
+
+
+

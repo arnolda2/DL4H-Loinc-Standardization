@@ -596,3 +596,46 @@ By sequencing the work this way you get quick, deployable gains without stalling
 
 ### Bottom line  
 This extension converts the existing research prototype into a **production-ready, full-catalog mapper** with built-in uncertainty handling—all without needing a discrete GPU or long re-training cycles.
+
+
+
+
+
+
+PyHealth Contribution 
+The next step of the project is to add a PyHealth contribution (GitHub Pull Request) to your model or dataset. We will process the PRs one by one. Our goal is to improve the reproducibility of the landscape of AI4H research models. We feel that while it is a useful practical exercise in reproducing state-of-the-art research, it would be a waste to not store and make attempted replications reproducible to the wider community. Please send the initial PR to the “develop” branch. Extra effort (i.e more than one contribution with excellent documentation), will be better. 
+New Dataset
+please follow the existing dataset class structure https://github.com/sunlabuiuc/PyHealth/tree/master/pyhealth/datasets 
+New Task
+please follow the existing task function structure https://github.com/sunlabuiuc/PyHealth/tree/master/pyhealth/tasks 
+New ML model 
+please follow the existing model class structure https://github.com/sunlabuiuc/PyHealth/tree/master/pyhealth/models 
+New example/use case of Pyhealth
+Demonstrate the use of PyHealth in your project and create a well-documented example. The decision to integrate your example into the main repo will be at the discretion of PyHealth developers. 
+Check out some of the examples:
+https://github.com/sunlabuiuc/PyHealth/tree/master/examples
+
+
+
+
+
+
+
+As referenced in the overview, there are multiple components to the final project: final report, video presentation, google form for final project, gitHub repository, PyHealth contribution pull request.
+
+We are now working on the final report
+
+As a reminder, here is the objective of this paper:
+Overview
+Hey everyone! For the final project, with the help of an AI assistant, your team will need to reproduce the results for a healthcare research paper from a predetermined list below. Since we recognize that generative models are becoming increasingly adopted in workflows, we are asking each of you to submit 2 Google forms recording your use of generative models in the reproducibility process. We want to understand how people are using these tools, whether these LLMs are being used properly, and more importantly, are they helpful in an educational or project setting.
+
+In this directory is all the work that has been done to recreate @LOINC_Standardization_paper.txt
+There is also a file named @Final_Project_instructions.txt, which includes the rubric for the assignment. It is split into 6 categories, each with more instructions inside of them: 1. Abstract, 2. Introduction, 3. Methodology, 4. Results, 5. Discussion, and 6. Author Contributions
+
+Using everything from this directory, please complete the instructions given for 2. Introduction. Add this in a new folder titled project report. Add a file called introduction.txt.
+
+Make sure to highlight the steps of data preprocessing include the dataset we ended up using compared to the entire dataset, how we selected this data by randomly sampling, and how we used it, and all the other steps that were taken.
+
+
+There is some more context in @llm_research_paper.txt. And @file_structure.md will be able to point to other important files.
+
