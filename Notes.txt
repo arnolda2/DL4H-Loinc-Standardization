@@ -639,3 +639,22 @@ Make sure to highlight the steps of data preprocessing include the dataset we en
 
 There is some more context in @llm_research_paper.txt. And @file_structure.md will be able to point to other important files.
 
+
+
+
+
+
+As referenced in the overview, there are multiple components to the final project: final report, video presentation, google form for final project, gitHub repository, PyHealth contribution pull request.
+
+We are now working on the presentation.
+
+As a reminder, here is the objective of this paper:
+Overview
+Hey everyone! For the final project, with the help of an AI assistant, your team will need to reproduce the results for a healthcare research paper from a predetermined list below. Since we recognize that generative models (i.e ChatGPT, Claude, Gemini) are becoming increasingly adopted in workflows, we are asking each of you to submit 2 Google forms recording your use of generative models in the reproducibility process. We want to understand how people are using these tools, whether these LLMs are being used properly, and more importantly, are they helpful in an educational or project setting.
+
+In this directory is all the work that has been done to recreate @LOINC_Standardization_paper.txt
+There is also a file named @Final_Project_instructions.txt, which includes the rubric for the assignment. It is split into 6 categories, each with more instructions inside of them: 1. Abstract, 2. Introduction, 3. Methodology, 4. Results, 5. Discussion, and 6. Author Contributions
+
+Based on all the information you have generated can you create a slide show presetnation to cover all the information. 
+
+There is some more context in @llm_research_paper.txt. And  @file_structure.md will be able to point to other important files.
