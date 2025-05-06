@@ -618,6 +618,24 @@ https://github.com/sunlabuiuc/PyHealth/tree/master/examples
 
 
 
+We were tasked to create this research paper using the help of LLMs. The next phase of this project is to generate a pyhealth contribution to the model or dataset. The goal is to improve the reproducibility of the landscape of AI4H research models. What are some contribution ideas?
+
+
+Some additional context:
+The next step of the project is to add a PyHealth contribution (GitHub Pull Request) to your model or dataset. We will process the PRs one by one. Our goal is to improve the reproducibility of the landscape of AI4H research models. We feel that while it is a useful practical exercise in reproducing state-of-the-art research, it would be a waste to not store and make attempted replications reproducible to the wider community.
+New Dataset
+please follow the existing dataset class structure https://github.com/sunlabuiuc/PyHealth/tree/master/pyhealth/datasets 
+New Task
+please follow the existing task function structure https://github.com/sunlabuiuc/PyHealth/tree/master/pyhealth/tasks 
+New ML model 
+please follow the existing model class structure https://github.com/sunlabuiuc/PyHealth/tree/master/pyhealth/models 
+New example/use case of Pyhealth
+Demonstrate the use of PyHealth in your project and create a well-documented example. The decision to integrate your example into the main repo will be at the discretion of PyHealth developers. 
+Check out some of the examples:
+https://github.com/sunlabuiuc/PyHealth/tree/master/examples
+
+
+
 
 
 
@@ -658,3 +676,31 @@ There is also a file named @Final_Project_instructions.txt, which includes the r
 Based on all the information you have generated can you create a slide show presetnation to cover all the information. 
 
 There is some more context in @llm_research_paper.txt. And  @file_structure.md will be able to point to other important files.
+
+
+
+
+
+We were tasked to create this research paper using the help of LLMs. The next phase of this project is to generate a pyhealth contribution to the model or dataset. The goal is to improve the reproducibility of the landscape of AI4H research models. Which of the following ideas is the best, rank the top 3 ideas.
+
+
+Some additional context:
+The next step of the project is to add a PyHealth contribution (GitHub Pull Request) to your model or dataset. We will process the PRs one by one. Our goal is to improve the reproducibility of the landscape of AI4H research models. We feel that while it is a useful practical exercise in reproducing state-of-the-art research, it would be a waste to not store and make attempted replications reproducible to the wider community.
+New Dataset
+please follow the existing dataset class structure https://github.com/sunlabuiuc/PyHealth/tree/master/pyhealth/datasets 
+New Task
+please follow the existing task function structure https://github.com/sunlabuiuc/PyHealth/tree/master/pyhealth/tasks 
+New ML model 
+please follow the existing model class structure https://github.com/sunlabuiuc/PyHealth/tree/master/pyhealth/models 
+New example/use case of Pyhealth
+Demonstrate the use of PyHealth in your project and create a well-documented example. The decision to integrate your example into the main repo will be at the discretion of PyHealth developers. 
+Check out some of the examples:
+https://github.com/sunlabuiuc/PyHealth/tree/master/examples
+
+
+
+Examples:
+
+
+
+

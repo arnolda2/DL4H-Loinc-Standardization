@@ -361,3 +361,172 @@ This document provides a comprehensive explanation of the project file structure
   - Implements fallback strategies for memory-constrained environments
   - Provides tools for efficient embedding computation
   - Manages temporary file cleanup during processing 
+
+## PyHealth Contribution Files
+
+The following section describes the files added as part of the PyHealth contribution, implementing LOINC standardization capabilities within the PyHealth framework:
+
+### PyHealth Core Components
+
+#### `pyhealth/datasets/` Directory
+
+- **`pyhealth/datasets/mimic3_loinc.py`**: 
+  - Implements the MIMIC3LOINCMappingDataset class for processing MIMIC-III laboratory data
+  - Processes d_labitems.csv to extract local lab test descriptions and associated LOINC codes
+  - Concatenates multiple fields (label, fluid) into standardized source text representations
+  - Implements sophisticated text normalization including lowercasing, punctuation handling, and whitespace standardization 
+  - Provides entity detection for specimen types, measurement methods, and properties
+  - Supports comprehensive LOINC terminology processing with multiple text representation options
+  - Handles priority-based fallback mechanisms for missing LOINC descriptions
+  - Implements configurable preprocessing pipelines with extensive customization options
+  - Provides flexible data splitting strategies for experimental validation (random, stratified, institution-based)
+  - Features memory-efficient data handling capabilities for large-scale datasets
+  - Includes comprehensive error handling with detailed logging and diagnostics
+
+- **`pyhealth/datasets/base_dataset.py`**: 
+  - Defines the BaseDataset abstract class as the foundation for all PyHealth datasets
+  - Establishes consistent interfaces for data loading and processing across the framework
+  - Implements standardized methods for train/validation/test splitting with configurable ratios
+  - Provides serialization and deserialization capabilities for model persistence
+  - Features consistent sampling mechanisms for balanced training data generation
+  - Implements support for stratified and random splitting strategies with seed control
+  - Includes comprehensive validation checks to ensure data integrity
+  - Provides standardized error handling that gracefully manages common data issues
+  - Implements efficient memory management techniques for large datasets
+  - Integrates seamlessly with PyHealth's broader dataset ecosystem
+
+#### `pyhealth/models/` Directory
+
+- **`pyhealth/models/contrastive_sentence_transformer.py`**: 
+  - Implements the ContrastiveSentenceTransformer class for semantic embedding generation
+  - Creates a sophisticated wrapper around pre-trained sentence transformer models (Sentence-T5, SapBERT, etc.)
+  - Supports configurable base model selection from multiple transformer architectures
+  - Implements optional projection layer for dimensionality reduction with configurable sizes
+  - Features L2 normalization for improved cosine similarity calculations
+  - Provides selective backbone freezing capabilities for efficient transfer learning
+  - Implements comprehensive batch processing for memory-efficient encoding operations
+  - Features automatic device detection and utilization (CPU/GPU)
+  - Includes memory-optimized forward pass implementations for large-scale applications
+  - Provides comprehensive model saving and loading functionality with configuration persistence
+  - Implements validation checks and error handling for corrupted model weights
+  - Integrates with PyHealth's model registry for centralized management
+
+- **`pyhealth/models/base_model.py`**: 
+  - Defines the BaseModel abstract class establishing the standard interface for all PyHealth models
+  - Implements consistent initialization patterns across the framework's model ecosystem
+  - Provides standardized save/load mechanisms for model persistence with version tracking
+  - Establishes framework-agnostic model definition patterns for maximum flexibility
+  - Creates clear inheritance hierarchy for specialized model implementations
+  - Includes comprehensive validation checks for configuration parameters
+  - Implements standardized error handling for model operations with actionable messages
+  - Provides integration hooks for PyHealth's broader model registry and versioning system
+  - Features model metadata handling for improved tracking and reproducibility
+  - Implements consistent interfaces for model evaluation and inference operations
+
+#### `pyhealth/tasks/` Directory
+
+- **`pyhealth/tasks/loinc_mapping.py`**: 
+  - Implements comprehensive task functions for LOINC code standardization
+  - Provides the loinc_retrieval_metrics_fn for detailed model evaluation
+  - Implements efficient top-k accuracy calculation (k=1,3,5,10) for performance assessment
+  - Features optimized similarity computation between source and target embeddings
+  - Implements the loinc_retrieval_predictions function for production-ready inference
+  - Provides sophisticated triplet mining functions for contrastive learning
+  - Implements hard negative mining strategies for challenging training examples
+  - Features semi-hard negative mining for balanced difficulty during training
+  - Includes batch-hard selection algorithms for efficient triplet generation
+  - Implements memory-efficient in-batch negative sampling techniques
+  - Provides optimized utility functions for fast similarity calculations
+  - Features comprehensive batch processing for large-scale operations
+  - Includes memory-aware implementations for resource-constrained environments
+  - Provides detailed performance breakdowns by category (specimen, scale type)
+  - Implements comprehensive error handling with informative diagnostic messages
+  - Features extensive logging capabilities for debugging and performance analysis
+
+### Example Implementation
+
+#### `examples/loinc_mapping_mimic3/` Directory
+
+- **`examples/loinc_mapping_mimic3/run_loinc_mapping.py`**: 
+  - Provides a comprehensive end-to-end script demonstrating the complete LOINC mapping workflow
+  - Implements dataset loading with detailed configuration options for MIMIC-III data
+  - Features model initialization with best practices for contrastive learning
+  - Includes complete training loop implementation with progress tracking and checkpointing
+  - Implements comprehensive evaluation with detailed metrics reporting
+  - Provides realistic inference examples with ranked candidate analysis
+  - Features memory-efficient processing techniques for large datasets
+  - Includes detailed logging and comprehensive error handling
+  - Demonstrates seamless integration with other PyHealth components
+  - Provides flexible command-line interface with extensive configuration options
+  - Implements data visualization capabilities for embedding spaces
+  - Features comparative analysis with baseline approaches for performance validation
+
+- **`examples/loinc_mapping_mimic3/run_loinc_mapping.ipynb`**: 
+  - Interactive Jupyter notebook version with step-by-step execution capabilities
+  - Provides in-depth explanations for each processing stage with theoretical background
+  - Includes detailed visualizations of embedding spaces and similarity distributions
+  - Features comprehensive performance analysis with comparative metrics
+  - Provides explanatory text cells detailing the methodology and implementation choices
+  - Includes real-world inference examples with detailed output analysis and interpretation
+  - Features integration examples showcasing interoperability with existing systems
+  - Provides troubleshooting guidance and implementation best practices
+  - Includes performance optimization tips for different computing environments
+  - Features interactive exploration capabilities for embedding visualization
+  - Implements annotation capabilities for error analysis and interpretation
+  - Provides markdown documentation integrated throughout the notebook
+
+- **`examples/loinc_mapping_mimic3/test_implementation.py`**: 
+  - Comprehensive validation script to verify all LOINC mapping components
+  - Implements unit tests for dataset loading and preprocessing functionality
+  - Features integration tests for model and dataset interaction patterns
+  - Includes performance validation against established benchmarks and expectations
+  - Provides edge case testing for robust implementation validation
+  - Features compatibility testing with the broader PyHealth ecosystem
+  - Implements error recovery testing to verify graceful failure handling
+  - Includes regression testing capabilities to ensure backward compatibility
+  - Features memory usage monitoring for efficiency validation
+  - Implements deterministic test execution for reproducible results
+  - Provides detailed error reporting for failed test cases
+  - Features comprehensive test coverage across all components
+
+- **`examples/loinc_mapping_mimic3/download_weights.sh`**: 
+  - Utility script to obtain pre-trained Stage 1 weights for accelerated experimentation
+  - Implements secure downloading from hosted repositories with proper authentication
+  - Features checksum validation to ensure data integrity of downloaded files
+  - Creates organized directory structures for systematic weights management
+  - Provides fallback mechanisms for connectivity issues and interrupted downloads
+  - Includes comprehensive error handling with detailed diagnostic reporting
+  - Features platform-specific implementations for cross-platform compatibility
+  - Provides detailed usage instructions and configuration options
+  - Implements version checking to ensure compatibility with current codebase
+  - Features progress reporting during download operations
+  - Includes cleanup functionality for temporary files and failed downloads
+  - Provides automated environment setup for immediate model usage
+
+- **`examples/loinc_mapping_mimic3/README.md`**: 
+  - Comprehensive documentation for the LOINC mapping implementation and example
+  - Provides clear project overview with goals and practical applications
+  - Includes detailed installation instructions with explicit dependency specifications
+  - Features step-by-step usage guides with executable code examples
+  - Provides expected performance metrics with benchmark results on standard datasets
+  - Includes troubleshooting information for common implementation issues
+  - Features integration guidance for incorporating LOINC mapping into existing systems
+  - Provides references to original research papers and methodologies
+  - Includes detailed explanations of the contrastive learning approach
+  - Features architectural diagrams illustrating component relationships
+  - Provides performance optimization guidelines for production deployment
+  - Includes acknowledgments and comprehensive licensing information
+
+- **`examples/loinc_mapping_mimic3/sample_data/`**: 
+  - Contains carefully curated sample datasets for immediate experimentation
+  - Includes representative subset of MIMIC-III d_labitems.csv with diverse lab tests
+  - Features a compact LOINC table (mini_loinc_table.csv) with essential concepts
+  - Provides pre-processed examples ready for immediate model testing
+  - Includes a diverse collection of mapping examples with varying complexity levels
+  - Features edge cases specifically designed to test model robustness
+  - Provides validation data with ground truth mappings for performance evaluation
+  - Includes comprehensive documentation of data sources and preprocessing steps
+  - Features realistic but anonymized examples representing actual clinical scenarios
+  - Provides balanced distribution of different specimen types and measurement methods
+  - Includes examples showcasing common challenges in LOINC mapping
+  - Features documentation explaining the dataset characteristics and limitations 
