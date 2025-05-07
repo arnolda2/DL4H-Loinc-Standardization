@@ -530,3 +530,433 @@ The following section describes the files added as part of the PyHealth contribu
   - Provides balanced distribution of different specimen types and measurement methods
   - Includes examples showcasing common challenges in LOINC mapping
   - Features documentation explaining the dataset characteristics and limitations 
+
+## Visualization Generation Scripts
+
+- **`create_architecture_diagram.py`**: 
+  - Generates comprehensive visual representation of the model architecture
+  - Creates layered diagram showing the encoder-decoder structure
+  - Visualizes data flow through the neural network components
+  - Implements precise component positioning for readability
+  - Includes detailed labeling of model components and connections
+  - Generates high-resolution output suitable for publication
+
+- **`create_two_stage_diagram.py`**: 
+  - Visualizes the two-stage training process workflow
+  - Illustrates differences between Stage 1 and Stage 2 training
+  - Shows how encoders and decoders are selectively frozen/unfrozen
+  - Demonstrates the data flow during each training stage
+  - Visualizes the transition between stages and model evolution
+  - Includes timeline representation of the training sequence
+
+- **`create_triplet_loss_diagram.py`**: 
+  - Creates visual explanation of triplet loss mechanism
+  - Illustrates anchor, positive, and negative example relationships
+  - Visualizes embedding space and distance relationships
+  - Shows how triplet margin influences model training
+  - Includes mathematical notation alongside visual elements
+  - Demonstrates how triplet loss pulls similar items together while pushing dissimilar items apart
+
+- **`create_scale_token_diagram.py`**: 
+  - Visualizes scale token integration methodology
+  - Shows how scale tokens are appended to input sequences
+  - Illustrates the effect of scale tokens on embedding space organization
+  - Demonstrates how scale information influences similarity calculations
+  - Includes examples of different scale types and their representations
+  - Shows token positioning strategies and their impact
+
+- **`create_augmentation_diagram.py`**: 
+  - Visualizes data augmentation techniques used in the model
+  - Illustrates text transformation methods for robust training
+  - Shows how augmentation increases dataset diversity
+  - Demonstrates synonym replacement, word deletion, and other techniques
+  - Includes before/after examples of augmented descriptions
+  - Visualizes augmentation impact on model generalization
+
+- **`generate_methodology_diagrams.py`**: 
+  - Coordinates generation of all methodology diagrams
+  - Implements consistent styling across visualization assets
+  - Sets standardized color schemes and visual language
+  - Manages output format specifications and resolution settings
+  - Ensures consistent labeling patterns across diagrams
+  - Provides batch processing capabilities for efficient generation
+
+- **`generate_visualizations.py`**: 
+  - Master script coordinating all visualization generation
+  - Implements unified interface for all visualization types
+  - Manages configuration settings for visualization components
+  - Provides command-line parameters for customization
+  - Coordinates file saving and format conversions
+  - Implements progress tracking for long-running visualization tasks
+
+- **`create_error_distribution.py`**: 
+  - Visualizes error distribution across different categories
+  - Creates bar charts showing error frequencies by type
+  - Implements pie charts for proportional error representation
+  - Includes statistical summary alongside visualizations
+  - Generates publication-quality graphics with detailed labeling
+  - Provides options for different visualization styles and color schemes
+
+- **`create_scale_distribution.py`**: 
+  - Visualizes distribution of scale types in the dataset
+  - Creates comprehensive charts showing scale frequency
+  - Implements visualizations comparing scale distributions in training/testing sets
+  - Shows scale type correlations with error categories
+  - Generates distribution plots with detailed annotations
+  - Includes legends and explanatory text elements
+
+## No-Match Handling Extensions
+
+- **`no_match_handler.py`**: 
+  - Advanced implementation extending threshold_negatives_handler.py
+  - Implements sophisticated algorithm for unmappable detection
+  - Features confidence calibration for reliability estimation
+  - Provides multi-stage filtering pipeline for improved accuracy
+  - Implements context-aware similarity assessment
+  - Features detailed explanation components for transparent decision making
+  - Includes comprehensive logging for auditing decisions
+  - Implements fallback strategies for edge cases
+  - Provides integration capabilities with existing clinical systems
+  - Features configurable thresholds with institution-specific tuning
+
+- **`run_no_match_handler.sh`**: 
+  - Controls execution of the no_match_handler.py module
+  - Sets up environment variables and dependencies
+  - Manages input and output file configurations
+  - Implements logging and progress monitoring
+  - Provides clean error handling and reporting
+  - Features different execution modes for training and inference
+
+- **`simple_nomatch_test.py`**: 
+  - Simplified test script for no-match handling evaluation
+  - Implements focused testing on critical unmappable patterns
+  - Provides quick validation of threshold settings
+  - Features detailed output reporting with validation metrics
+  - Implements comparison with reference implementations
+  - Includes performance benchmarking for efficiency evaluation
+
+- **`run_nomatch_test.sh`**: 
+  - Simple shell script for executing nomatch tests
+  - Sets up minimal testing environment
+  - Manages test data and configurations
+  - Provides streamlined output and reporting
+  - Implements quick verification of functionality
+  - Features error handling for failed tests
+
+- **`NOMATCH_README.md`**: 
+  - Comprehensive documentation for no-match handling capabilities
+  - Provides detailed implementation explanation
+  - Includes usage examples with code snippets
+  - Features performance metrics and benchmarking results
+  - Explains integration strategies for production systems
+  - Includes troubleshooting guidance for common issues
+  - Provides parameter tuning recommendations for optimal performance
+
+## Project Documentation
+
+- **`final_paper.md`**: 
+  - Comprehensive research paper in Markdown format
+  - Documents the complete LOINC standardization approach
+  - Includes detailed methodology and implementation descriptions
+  - Features comprehensive evaluation results and analysis
+  - Provides discussion of limitations and future directions
+  - Includes properly formatted citations and references
+
+- **`recommendations.md`**: 
+  - Strategic recommendations for LOINC standardization implementation
+  - Provides guidance for production deployment considerations
+  - Includes best practices for model integration in clinical workflows
+  - Features parameter tuning recommendations for different use cases
+  - Discusses strategies for handling challenging lab test categories
+  - Provides maintenance and update recommendations for long-term use
+
+## Project Report Components
+
+### `project report/` Directory
+
+- **`introduction.txt`**: 
+  - Comprehensive introduction to the LOINC standardization challenge
+  - Discusses the importance of lab test standardization in healthcare
+  - Outlines the scale and impact of the problem
+  - Introduces the machine learning approach to standardization
+  - Provides overview of the project goals and contributions
+  - Sets the context for the technical implementation details
+
+- **`methodology_p1.txt`** and **`methodology_p2.txt`**: 
+  - Detailed explanation of the model architecture and training approach
+  - Describes the two-stage training process in comprehensive detail
+  - Explains triplet loss implementation and negative mining strategies
+  - Outlines scale token integration methodology and benefits
+  - Discusses data preprocessing and augmentation techniques
+  - Provides justification for architectural decisions
+
+- **`results.txt`**: 
+  - Comprehensive presentation of model performance metrics
+  - Includes detailed breakdown of accuracy across different test categories
+  - Presents ablation study findings showing component contributions
+  - Discusses error analysis and patterns in misclassifications
+  - Provides performance comparison with baseline approaches
+  - Includes detailed tables and results summary
+
+- **`discussion.txt`**: 
+  - In-depth discussion of model performance and implications
+  - Analyzes strengths and limitations of the approach
+  - Discusses challenging test categories and potential improvements
+  - Considers broader implications for clinical lab standardization
+  - Explores potential for generalization to other standardization tasks
+  - Provides context for the results within the healthcare informatics landscape
+
+- **`abstract.txt`**: 
+  - Concise summary of the research project and findings
+  - Highlights key innovations and contributions
+  - Summarizes performance improvements over existing approaches
+  - Emphasizes clinical significance of the work
+  - Provides overview of methodology and key results
+  - Establishes the importance of the contribution in clear terms
+
+- **`presentation.md`**: 
+  - Markdown-formatted presentation summarizing the project
+  - Features slide-by-slide structure for presentation purposes
+  - Includes key visualizations and diagrams
+  - Provides concise explanation of methodology and results
+  - Features demonstration examples showing model capabilities
+  - Includes talking points and presentation guidance 
+
+## PyHealth Implementation Files
+
+The following section describes the implementation files in the PyHealth_Contribution directory, detailing how LOINC standardization capability was integrated with the PyHealth framework:
+
+- **`pyhealth_contribution_report.txt`**: 
+  - Comprehensive report on the PyHealth integration process
+  - Documents the approach to integrating LOINC standardization into PyHealth
+  - Discusses implementation challenges and solutions
+  - Provides detailed description of interface design decisions
+  - Explains compatibility with existing PyHealth components
+  - Includes testing methodology and validation results
+  - Features performance benchmarks in the PyHealth ecosystem
+  - Discusses future maintenance and enhancement strategies
+
+### PyHealth Implementation Details
+
+#### `PyHealth_Contribution/pyhealth/datasets` Directory
+
+- **`mimic3_loinc_dataset.py`**: 
+  - Specialized implementation for processing MIMIC-III data for LOINC mapping
+  - Extends PyHealth's dataset capabilities with LOINC-specific functionality
+  - Implements MIMIC-III lab data preprocessing following PyHealth conventions
+  - Provides dataset splitting methods appropriate for LOINC mapping tasks
+  - Features configurable preprocessing and normalization options
+  - Implements memory-efficient data loading patterns
+  - Includes compatibility with PyHealth's broader dataset ecosystem
+  - Features comprehensive error handling for data quality issues
+
+- **`loinc_dataset.py`**: 
+  - Implements LIONCDataset class for handling LOINC reference terminology
+  - Provides utilities for processing the official LOINC database
+  - Implements sophisticated text normalization for LOINC descriptions
+  - Features multi-column processing for comprehensive term representation
+  - Includes facilities for handling LOINC versioning and updates
+  - Provides compatibility with different LOINC versions and formats
+  - Implements efficient lookup mechanisms for LOINC code retrieval
+  - Features memory-efficient representation of the LOINC database
+
+#### `PyHealth_Contribution/pyhealth/models` Directory
+
+- **`loinc_encoder.py`**: 
+  - Implements specialized encoding model for LOINC standardization
+  - Adapts the project's core T5-based encoder for the PyHealth framework
+  - Provides PyHealth-compatible interfaces for model training and inference
+  - Features standardized saving and loading mechanisms
+  - Implements memory-efficient inference capabilities
+  - Includes progress tracking and logging compatible with PyHealth
+  - Features integration with PyHealth's model registry 
+  - Provides standardized evaluation metrics for model comparison
+
+- **`retrieval_model.py`**: 
+  - Implements text retrieval capabilities for LOINC mapping
+  - Features comprehensive similarity calculation methods
+  - Provides batch processing for efficient large-scale operations
+  - Implements configurable retrieval parameters (k-value, threshold)
+  - Features caching mechanisms for improved performance
+  - Includes detailed result formatting and explanation
+  - Provides integration with PyHealth's broader model ecosystem
+  - Features standardized evaluation according to PyHealth conventions
+
+#### `PyHealth_Contribution/pyhealth/tasks` Directory
+
+- **`loinc_standardization.py`**: 
+  - Defines the LOINC standardization task in PyHealth's framework
+  - Implements task-specific data handling and preprocessing
+  - Provides standardized evaluation metrics for the standardization task
+  - Features comprehensive reporting and result formatting
+  - Implements configurable task parameters for different use cases
+  - Includes integration with PyHealth's task registry
+  - Provides compatibility with PyHealth's broader training pipelines
+  - Features standardized documentation following PyHealth conventions
+
+### Example Implementation
+
+#### `PyHealth_Contribution/examples` Directory
+
+- **`loinc_example.py`**: 
+  - Comprehensive example demonstrating LOINC standardization with PyHealth
+  - Provides complete end-to-end workflow from data loading to evaluation
+  - Includes detailed comments explaining each processing step
+  - Features best practices for configuration and parameter selection
+  - Implements comprehensive error handling and logging
+  - Provides visualization of model outputs and performance metrics
+  - Includes performance benchmarking against reference implementations
+  - Features memory-efficient implementation suitable for various environments
+
+- **`loinc_inference_example.py`**: 
+  - Focused example demonstrating inference with trained LOINC models
+  - Provides streamlined implementation focusing on production use cases
+  - Includes examples of handling various input formats
+  - Features comprehensive output formatting and explanation
+  - Implements efficient batch processing for large-scale inference
+  - Provides examples of confidence calculation and threshold application
+  - Includes memory-optimized implementation for resource-constrained environments
+  - Features integration examples with other PyHealth components 
+
+## Preprocessing Implementation
+
+### `preprocessing/` Directory
+
+- **`advanced_preprocessing.py`**: 
+  - Implements sophisticated text preprocessing pipeline for lab descriptions
+  - Features comprehensive text normalization including case handling and punctuation removal
+  - Implements entity detection for specimens, methods, and properties
+  - Provides configurable preprocessing options for different data sources
+  - Features specialized handling for abbreviations and acronyms
+  - Implements synonym expansion for improved term matching
+  - Provides scale type detection and standardization
+  - Includes comprehensive error handling for malformed inputs
+
+- **`process_mimic.py`**: 
+  - Specialized preprocessing for MIMIC-III laboratory data
+  - Extracts and normalizes lab test descriptions from MIMIC-III
+  - Implements field concatenation for comprehensive test representation
+  - Features standardized output format compatible with model training
+  - Provides optimization for large-scale dataset processing
+  - Implements intelligent handling of missing or incomplete data
+  - Includes detailed logging for preprocessing diagnostics
+  - Features integration with the broader preprocessing pipeline
+
+- **`create_matching_dataset.py`**: 
+  - Creates matched pairs of source-target texts for training
+  - Implements intelligent matching heuristics for data preparation
+  - Features configurable matching parameters for dataset creation
+  - Provides validation mechanisms to ensure data quality
+  - Implements stratified sampling for balanced dataset creation
+  - Features comprehensive error checking and validation
+  - Includes detailed logging of the matching process
+  - Generates statistics on the created dataset characteristics
+
+- **`fix_augmentation.py`**: 
+  - Implements fixes and enhancements for data augmentation pipeline
+  - Corrects issues in augmented data to improve quality
+  - Features specialized handling for medical terminology during augmentation
+  - Provides validation of augmented examples for consistency
+  - Implements detection and correction of invalid augmentations
+  - Features integration with the broader augmentation framework
+  - Includes comprehensive logging of corrections made
+  - Provides statistical analysis of augmentation quality improvements
+
+## Main Training Scripts
+
+- **`main.py`**: 
+  - Core training script implementing the main training loop
+  - Coordinates data loading, model initialization, and training execution
+  - Implements efficient training with comprehensive progress tracking
+  - Features checkpoint saving and resumption capabilities
+  - Provides detailed logging of training metrics and progress
+  - Implements early stopping based on validation performance
+  - Features command-line interface with extensive configuration options
+  - Includes integration with all model components for unified training
+
+- **`main_augmented.py`**: 
+  - Extended training script incorporating data augmentation
+  - Features enhanced training loop with augmented example integration
+  - Implements epoch-based augmentation refresh strategies
+  - Provides detailed monitoring of augmentation impact on training
+  - Features memory-efficient handling of expanded training set
+  - Implements comprehensive logging with augmentation-specific metrics
+  - Includes advanced hyperparameter tuning for augmented training
+  - Provides seamless integration with the core training pipeline
+
+- **`data_augmentation.py`**: 
+  - Comprehensive implementation of text augmentation strategies
+  - Features multiple augmentation techniques:
+    - Synonym replacement using medical terminology
+    - Random word deletion with configurable rates
+    - Random word swapping with context awareness
+    - Test method and specimen substitution
+  - Implements intelligent preservation of critical information
+  - Provides configurable augmentation parameters
+  - Features scale-aware augmentation preserving scale tokens
+  - Includes comprehensive validation of augmented examples
+  - Provides detailed statistics on augmentation operations
+
+## Utilities and Helper Scripts
+
+- **`evaluate_trained_model.py`**: 
+  - Standalone script for comprehensive model evaluation
+  - Features multiple evaluation metrics and detailed reporting
+  - Implements batch processing for memory-efficient evaluation
+  - Provides stratified performance analysis across categories
+  - Features comprehensive error analysis on misclassified examples
+  - Implements integration with visualization generation
+  - Includes detailed logging of evaluation process
+  - Features command-line interface with extensive configuration options
+
+- **`identify_confusable_pairs.py`**: 
+  - Analyzes dataset to find potentially confusable LOINC pairs
+  - Implements similarity analysis to identify confusable concepts
+  - Features specialized detection of scale-confusable components
+  - Provides detailed reporting on confusable pair prevalence
+  - Implements category-based analysis of confusability patterns
+  - Features integration with model evaluation to assess impact
+  - Includes visualization generation for confusion patterns
+  - Provides strategies for mitigating confusion through training
+
+- **`process_scale_distributions.py`**: 
+  - Analyzes and visualizes scale type distributions
+  - Features comprehensive statistical analysis of scale prevalence
+  - Implements category-based breakdown of scale distributions
+  - Provides correlation analysis between scales and error patterns
+  - Features integration with visualization components
+  - Includes detailed reporting on scale distribution findings
+  - Implements recommendations for balanced training based on distribution
+  - Features command-line interface with configuration options
+
+- **`scale_inference.py`**: 
+  - Implements rule-based scale type inference from descriptions
+  - Features pattern matching for scale indicator detection
+  - Implements confidence scoring for scale predictions
+  - Provides comprehensive rule set for different scale types
+  - Features context-aware inference improving accuracy
+  - Includes detailed reporting on inference performance
+  - Implements integration with the broader model pipeline
+  - Features comprehensive error handling for edge cases
+
+## Project Setup and Requirements
+
+- **`requirements.txt`**: 
+  - Comprehensive list of Python dependencies
+  - Specifies exact versions for reproducibility
+  - Includes all required packages for model training and evaluation
+  - Features minimized dependencies to reduce conflicts
+  - Provides environment-specific variations where needed
+  - Includes optional dependencies for extended functionality
+  - Features grouping of dependencies by component
+  - Provides comments explaining non-standard packages
+
+- **`run_all.sh`**: 
+  - Master script coordinating complete pipeline execution
+  - Implements sequential execution of preprocessing, training, and evaluation
+  - Features comprehensive error handling and status reporting
+  - Provides configurable execution parameters via environment variables
+  - Implements checkpoint validation between execution steps
+  - Features detailed logging of the complete pipeline execution
+  - Includes time tracking for performance monitoring
+  - Provides clean termination and resource cleanup 
