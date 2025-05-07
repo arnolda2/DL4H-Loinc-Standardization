@@ -36,13 +36,17 @@ config = {
     'freeze_backbone': True,
 }
 
+# Ensure directory exists
+os.makedirs('weights', exist_ok=True)
+
 # Save the config
 torch.save(config, 'weights/config.bin')
 
-# Create a dummy model state dictionary 
+# Create a simplified dummy model state dictionary that will work with our model
+# Just include the fc layer weights, which is what we're fine-tuning in Stage 2
 model_dict = {
-    'fc.1.weight': torch.randn(128, 384),  # MiniLM-L6-v2 has 384 dim
-    'fc.1.bias': torch.zeros(128),
+    'fc.0.weight': torch.randn(128, 384),  # MiniLM-L6-v2 has 384 dim output
+    'fc.0.bias': torch.zeros(128),
 }
 
 # Save the model state dict

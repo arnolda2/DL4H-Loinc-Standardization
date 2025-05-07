@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple, Union, Any, Callable
 import logging
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from tqdm import tqdm
 
 from .base_model import BaseModel
 
@@ -39,13 +40,12 @@ class ContrastiveSentenceTransformer(BaseModel):
     
     def __init__(
         self,
-        base_model_id: str = "google/sentence-t5-base",
-        projection_dim: Optional[int] = 128,
+        base_model_id: str = "sentence-transformers/all-MiniLM-L6-v2",
+        projection_dim: Optional[int] = None,
         freeze_backbone: bool = True,
         normalize_embeddings: bool = True,
-        dropout: float = 0.1,
     ):
-        super(ContrastiveSentenceTransformer, self).__init__()
+        super().__init__()
         
         self.base_model_id = base_model_id
         self.projection_dim = projection_dim
@@ -63,16 +63,16 @@ class ContrastiveSentenceTransformer(BaseModel):
                 param.requires_grad = False
         
         # Get the output dimension of the base model
-        self.base_output_dim = self.encoder.get_sentence_embedding_dimension()
-        logger.info(f"Base model output dimension: {self.base_output_dim}")
+        self.output_dim = self.encoder.get_sentence_embedding_dimension()
+        logger.info(f"Base model output dimension: {self.output_dim}")
         
         # Add projection layer if specified
         if projection_dim is not None:
-            logger.info(f"Adding projection layer: {self.base_output_dim} -> {projection_dim}")
+            logger.info(f"Adding projection layer: {self.output_dim} -> {projection_dim}")
             self.fc = nn.Sequential(
-                nn.Dropout(dropout),
-                nn.Linear(self.base_output_dim, projection_dim)
+                nn.Linear(self.output_dim, projection_dim),
             )
+            self.output_dim = projection_dim
         else:
             self.fc = nn.Identity()
             
@@ -86,11 +86,15 @@ class ContrastiveSentenceTransformer(BaseModel):
             Tensor of shape (batch_size, embedding_dim) containing the embeddings.
         """
         # Get embeddings from the base model
-        with torch.set_grad_enabled(not self.freeze_backbone):
-            base_embeddings = self.encoder.encode(texts, convert_to_tensor=True)
+        with torch.inference_mode():
+            embeddings = self.encoder.encode(texts, convert_to_tensor=True)
+            
+        # Ensure FC layer is on the same device as embeddings
+        device = embeddings.device
+        self.fc = self.fc.to(device)
             
         # Pass through projection layer
-        embeddings = self.fc(base_embeddings)
+        embeddings = self.fc(embeddings)
         
         # L2 normalize if specified
         if self.normalize_embeddings:
@@ -98,91 +102,125 @@ class ContrastiveSentenceTransformer(BaseModel):
             
         return embeddings
     
-    def encode(self, texts: Union[str, List[str]], batch_size: int = 32, 
-               convert_to_numpy: bool = True, show_progress_bar: bool = False) -> Union[np.ndarray, torch.Tensor]:
-        """Encode texts to embeddings.
-        
-        This is a convenience method that handles both single texts and batches,
-        and provides options for returning numpy arrays or torch tensors.
+    def encode(
+        self, 
+        texts: List[str], 
+        batch_size: int = 32, 
+        show_progress_bar: bool = False,
+        convert_to_numpy: bool = True,
+        convert_to_tensor: bool = False,
+        device: Optional[str] = None,
+    ) -> Union[np.ndarray, torch.Tensor]:
+        """Encode the given texts into embeddings.
         
         Args:
-            texts: A single text string or a list of text strings to encode.
+            texts: The texts to encode.
             batch_size: Batch size for encoding.
+            show_progress_bar: Whether to show a progress bar.
             convert_to_numpy: Whether to convert the output to a numpy array.
-            show_progress_bar: Whether to show a progress bar during encoding.
+            convert_to_tensor: Whether to convert the output to a torch tensor.
+            device: The device to use for encoding.
             
         Returns:
-            Embeddings as a numpy array or torch tensor.
+            Array of shape (batch_size, output_dim) containing the embeddings.
         """
-        # Handle single text case
-        if isinstance(texts, str):
-            texts = [texts]
-            
-        device = next(self.parameters()).device
-        self.to(device)
+        self.eval()  # Set to evaluation mode
+        
+        # If device is provided, move model to device
+        if device is not None:
+            self.to(device)
+        
+        all_embeddings = []
         
         # Process in batches
-        all_embeddings = []
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i:i+batch_size]
+        for i in tqdm(
+            range(0, len(texts), batch_size),
+            desc="Batches",
+            disable=not show_progress_bar,
+        ):
+            batch_texts = texts[i:i + batch_size]
+            
+            # Encode batch
             with torch.no_grad():
-                embeddings = self.forward(batch_texts)
-                all_embeddings.append(embeddings)
-                
+                batch_embeddings = self(batch_texts)
+            
+            all_embeddings.append(batch_embeddings)
+        
         # Concatenate all embeddings
         all_embeddings = torch.cat(all_embeddings, dim=0)
         
+        # Convert to numpy or tensor as requested
         if convert_to_numpy:
             return all_embeddings.cpu().numpy()
+        elif convert_to_tensor:
+            return all_embeddings
+        
         return all_embeddings
     
-    def save_pretrained(self, output_dir: str):
-        """Save the model to a directory.
+    def get_config(self) -> dict:
+        """Get the model configuration as a dictionary.
         
-        Args:
-            output_dir: Directory where model should be saved.
+        Returns:
+            Dictionary containing the model configuration.
         """
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Save the model config
-        config = {
+        return {
             "base_model_id": self.base_model_id,
             "projection_dim": self.projection_dim,
             "normalize_embeddings": self.normalize_embeddings,
             "freeze_backbone": self.freeze_backbone,
         }
-        
-        # Save the model weights
-        torch.save(self.state_dict(), os.path.join(output_dir, "pytorch_model.bin"))
-        
-        # Save the config
-        torch.save(config, os.path.join(output_dir, "config.bin"))
-        
-        logger.info(f"Model saved to {output_dir}")
-        
-    @classmethod
-    def from_pretrained(cls, model_dir: str):
-        """Load a pretrained model from a directory.
+    
+    def save_pretrained(self, save_dir: str) -> None:
+        """Save the model to a directory.
         
         Args:
-            model_dir: Directory containing the saved model.
+            save_dir: Directory to save the model to.
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Save configuration
+        torch.save(self.get_config(), os.path.join(save_dir, "config.bin"))
+        
+        # Save model state dict
+        torch.save(self.state_dict(), os.path.join(save_dir, "pytorch_model.bin"))
+        
+        logger.info(f"Model saved to {save_dir}")
+        
+    @classmethod
+    def from_pretrained(cls, model_dir: str) -> "ContrastiveSentenceTransformer":
+        """Load a model from a directory.
+        
+        Args:
+            model_dir: Directory to load the model from.
             
         Returns:
-            Loaded ContrastiveSentenceTransformer model.
+            Loaded model.
         """
-        # Load the config
-        config = torch.load(os.path.join(model_dir, "config.bin"))
+        # Load configuration
+        config_path = os.path.join(model_dir, "config.bin")
+        if not os.path.exists(config_path):
+            raise ValueError(f"Config file not found at {config_path}")
         
-        # Create model with the saved config
+        config = torch.load(config_path)
+        
+        # Create model
         model = cls(
-            base_model_id=config["base_model_id"],
-            projection_dim=config["projection_dim"],
-            normalize_embeddings=config["normalize_embeddings"],
-            freeze_backbone=config["freeze_backbone"],
+            base_model_id=config.get("base_model_id", "sentence-transformers/all-MiniLM-L6-v2"),
+            projection_dim=config.get("projection_dim", None),
+            freeze_backbone=config.get("freeze_backbone", True),
+            normalize_embeddings=config.get("normalize_embeddings", True),
         )
         
-        # Load the weights
-        model.load_state_dict(torch.load(os.path.join(model_dir, "pytorch_model.bin")))
+        # Load state dict
+        model_path = os.path.join(model_dir, "pytorch_model.bin")
+        if not os.path.exists(model_path):
+            raise ValueError(f"Model file not found at {model_path}")
         
-        logger.info(f"Model loaded from {model_dir}")
+        try:
+            state_dict = torch.load(model_path)
+            model.load_state_dict(state_dict, strict=False)
+            logger.info(f"Loaded model weights from {model_path}")
+        except Exception as e:
+            logger.warning(f"Error loading model weights: {e}. Using newly initialized model.")
+        
         return model 

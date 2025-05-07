@@ -33,6 +33,10 @@ from tqdm import tqdm
 # Add the parent directory to the path to allow importing PyHealth modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
+# This is the key addition to make sure we import from PyHealth_Contribution
+pyhealth_contribution_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+sys.path.insert(0, pyhealth_contribution_path)
+
 from pyhealth.datasets.mimic3_loinc import MIMIC3LOINCMappingDataset
 from pyhealth.models.contrastive_sentence_transformer import ContrastiveSentenceTransformer
 from pyhealth.tasks.loinc_mapping import (
