@@ -627,16 +627,6 @@ With no-match handling:
 - Sentence-T5: [huggingface.co/sentence-transformers/sentence-t5-base](https://huggingface.co/sentence-transformers/sentence-t5-base)
 - PyHealth: [github.com/sunlabuiuc/PyHealth](https://github.com/sunlabuiuc/PyHealth)
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- This project builds upon the Sentence-T5 models from the Sentence Transformers library
-- We thank the LOINC organization for providing the reference terminology
-- We acknowledge the creators of the MIMIC-III database for providing valuable clinical data 
-
 
 
 # LOINC Standardization Model Project Structure
